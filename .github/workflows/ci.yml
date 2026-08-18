@@ -39,3 +39,26 @@ jobs:
       # 只校验参数表未被破坏；完整转换需要 open3d/cadquery，留给本地与发布流程
       - name: cli.py --help parses
         run: python -c "import cli; cli.build_parser().parse_args(['x.jpg','--width','135','--no-shell']); print('CLI contract OK')"
+
+  web:
+    name: Browser engine
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: npm install
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      # 分色与网格化结果必须与 Python 逐像素一致，外壳网格必须水密
+      - name: Engine parity and geometry tests
+        run: npx vitest run

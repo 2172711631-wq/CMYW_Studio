@@ -243,3 +243,9 @@ cloudflared.exe
 _restored/
 _src_decompiled/
 一键恢复*.bat
+
+# Node / 浏览器版
+node_modules/
+web/dist/
+web/.vite/
+*.tsbuildinfo
