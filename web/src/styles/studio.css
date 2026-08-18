@@ -1,0 +1,213 @@
+/* =========================================================================
+   制作台 —— 工具页。
+   信息密度比首页高，装饰相应收紧：这里的人是来操作的，不是来看氛围的。
+   ========================================================================= */
+
+.page-studio { background-attachment: fixed; }
+
+.studio { padding: 8rem 0 5rem; }
+
+.studio-head { max-width: 56ch; margin-bottom: clamp(2rem, 4vw, 3rem); }
+.studio-head h1 { font-size: var(--step-3); margin: 0.9rem 0 1rem; }
+.studio-privacy {
+  font-size: var(--step--1);
+  color: var(--paper-dim);
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+}
+.studio-privacy::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 0.62rem;
+  background: var(--moon);
+  box-shadow: 0 0 10px var(--moon);
+}
+
+.studio-grid {
+  display: grid;
+  gap: clamp(1rem, 2.5vw, 1.75rem);
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+@media (min-width: 940px) {
+  .studio-grid { grid-template-columns: minmax(320px, 380px) minmax(0, 1fr); }
+}
+
+.panel {
+  background: color-mix(in srgb, var(--night-soft) 72%, transparent);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: clamp(1.1rem, 2.5vw, 1.6rem);
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+/* ---------------- 上传区 ---------------- */
+.drop {
+  display: block;
+  border: 1.5px dashed var(--line);
+  border-radius: 12px;
+  padding: 1.9rem 1.1rem;
+  text-align: center;
+  cursor: pointer;
+  color: var(--paper-dim);
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+.drop:hover,
+.drop[data-over="true"] {
+  border-color: var(--glow);
+  background: color-mix(in srgb, var(--glow) 7%, transparent);
+  color: var(--paper);
+}
+.drop-inner { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+.drop-inner svg { color: var(--glow); }
+.drop-inner strong { font-size: var(--step--1); font-weight: 700; color: var(--paper); }
+.drop-inner small { font-size: 0.75rem; color: var(--paper-faint); }
+
+/* ---------------- 字段 ---------------- */
+.field { display: flex; flex-direction: column; gap: 0.55rem; }
+.field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: var(--step--1);
+  font-weight: 700;
+}
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--glow); font-size: 0.8125rem; }
+.hint { font-size: 0.75rem; color: var(--paper-faint); line-height: 1.55; }
+
+input[type="range"] {
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--line);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--glow);
+  cursor: pointer;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--glow) 16%, transparent);
+  transition: box-shadow 0.2s;
+}
+input[type="range"]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 8px color-mix(in srgb, var(--glow) 22%, transparent); }
+input[type="range"]::-moz-range-thumb {
+  width: 17px; height: 17px; border: 0; border-radius: 50%;
+  background: var(--glow); cursor: pointer;
+}
+
+/* 开关 */
+.switch { display: flex; align-items: center; gap: 0.7rem; cursor: pointer; font-size: var(--step--1); }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch span {
+  flex: none;
+  width: 40px; height: 22px;
+  border-radius: 999px;
+  background: var(--line);
+  position: relative;
+  transition: background 0.22s var(--ease);
+}
+.switch span::after {
+  content: "";
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--paper);
+  transition: transform 0.22s var(--ease);
+}
+.switch input:checked + span { background: var(--glow); }
+.switch input:checked + span::after { transform: translateX(18px); }
+.switch input:focus-visible + span { outline: 2px solid var(--glow); outline-offset: 3px; }
+.switch em { font-style: normal; font-weight: 700; }
+
+/* 色卡 */
+.swatches { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.swatch {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s var(--ease), border-color 0.2s;
+}
+.swatch:hover { transform: scale(1.1); }
+.swatch[aria-checked="true"] { border-color: var(--glow); transform: scale(1.1); }
+
+.btn-block { width: 100%; justify-content: center; }
+
+/* ---------------- 进度 / 报错 ---------------- */
+.progress { display: flex; flex-direction: column; gap: 0.5rem; }
+.progress-bar { height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.progress-bar i { display: block; height: 100%; width: 0; background: var(--glow); transition: width 0.25s var(--ease); }
+#progressText { color: var(--paper-dim); font-size: 0.75rem; }
+
+.err {
+  font-size: var(--step--1);
+  color: #ffb4b4;
+  background: color-mix(in srgb, #ff6b6b 12%, transparent);
+  border: 1px solid color-mix(in srgb, #ff6b6b 32%, transparent);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+}
+
+/* ---------------- 预览 ---------------- */
+.preview-panel { min-height: 420px; }
+.preview-stage {
+  position: relative;
+  flex: 1;
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  /* 深一档的底，模拟暗房，让预览的透光色更可信 */
+  background:
+    radial-gradient(60% 60% at 50% 45%, #10182c 0%, var(--night-deep) 70%);
+  overflow: hidden;
+}
+.preview-empty { text-align: center; color: var(--paper-faint); font-size: var(--step--1); line-height: 1.8; padding: 2rem; }
+#preview {
+  max-width: 100%;
+  max-height: 62vh;
+  border-radius: 6px;
+  /* 预览本身就是"点亮"的，给它一圈真实的光溢出 */
+  box-shadow: 0 0 70px -10px color-mix(in srgb, var(--glow) 45%, transparent),
+    0 18px 50px -20px rgba(0, 0, 0, 0.8);
+  image-rendering: auto;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.stats > div { background: var(--night); padding: 0.7rem 0.85rem; }
+.stats dt { font-size: 0.7rem; color: var(--paper-faint); }
+.stats dd { margin: 0.15rem 0 0; font-size: 0.95rem; }
+
+.done {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+.done strong { font-family: var(--font-display); font-size: var(--step-1); }
+.done .btn { margin-top: 0.3rem; }

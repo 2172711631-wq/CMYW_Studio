@@ -1,0 +1,19 @@
+# Cloudflare Pages 响应头 / response headers
+# 站点是纯静态的，没有后端可攻击；这里主要是收紧浏览器侧的行为并配好缓存。
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+  # script-src 不需要 unsafe-inline —— 页面里没有内联脚本。
+  # style-src 需要，因为画廊用行内 style 传每张图的宽高比。
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+
+# 带内容哈希的产物，可以永久缓存
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/img/*
+  Cache-Control: public, max-age=604800

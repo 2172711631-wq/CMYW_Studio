@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>制作台 · 触光工坊</title>
+<meta name="description" content="上传照片，在浏览器里生成可打印的彩色透光灯箱 3MF。照片不会上传到任何服务器。" />
+<meta name="theme-color" content="#161E36" />
+<meta name="robots" content="index,follow" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=Karla:wght@400;500;700&family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/src/styles/site.css" />
+<link rel="stylesheet" href="/src/styles/studio.css" />
+</head>
+<body class="page-studio">
+
+<nav class="nav" id="nav">
+  <a class="brand" href="/">触光工坊<span>Touch &amp; Light</span></a>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-set-lang="zh-CN" aria-pressed="true">中</button>
+      <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+    </div>
+    <a class="btn btn-ghost" href="/#how">
+      <span data-lang-zh>原理</span><span data-lang-en>How it works</span>
+    </a>
+  </div>
+</nav>
+
+<main class="studio shell">
+
+  <header class="studio-head">
+    <p class="label" data-lang-zh>制作台</p>
+    <p class="label" data-lang-en>Studio</p>
+    <h1 data-lang-zh>选一张照片，看它亮起来</h1>
+    <h1 data-lang-en>Pick a photo, watch it light up</h1>
+    <p class="studio-privacy">
+      <span data-lang-zh>解算全部在这台设备上完成。照片不会离开你的浏览器，断网也能用。</span>
+      <span data-lang-en>Everything runs on this device. Your photo never leaves the browser — it works offline.</span>
+    </p>
+  </header>
+
+  <div class="studio-grid">
+
+    <!-- ============ 左：控制 ============ -->
+    <section class="panel" aria-label="设置">
+
+      <label class="drop" id="drop" for="file">
+        <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden />
+        <div class="drop-inner">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16" stroke-linecap="round"/>
+          </svg>
+          <strong data-lang-zh>把照片拖进来，或点击选择</strong>
+          <strong data-lang-en>Drop a photo here, or click to choose</strong>
+          <small data-lang-zh>JPG · PNG · WebP · 建议颜色饱和、明暗分明</small>
+          <small data-lang-en>JPG · PNG · WebP — saturated, high-contrast images work best</small>
+        </div>
+      </label>
+
+      <div class="field">
+        <div class="field-head">
+          <span data-lang-zh>最长边</span><span data-lang-en>Longest edge</span>
+          <output id="sizeOut" class="mono">135 mm</output>
+        </div>
+        <input type="range" id="size" min="80" max="240" step="5" value="135" />
+        <p class="hint">
+          <span data-lang-zh>越大越清晰（看得更远），但打印时间和耗材同步上涨</span>
+          <span data-lang-en>Bigger reads sharper from a distance, but costs time and filament</span>
+        </p>
+      </div>
+
+      <div class="field">
+        <label class="switch">
+          <input type="checkbox" id="withShell" checked />
+          <span></span>
+          <em data-lang-zh>连灯箱外壳一起生成</em>
+          <em data-lang-en>Include the lightbox shell</em>
+        </label>
+      </div>
+
+      <div class="field" id="shellFields">
+        <div class="field-head">
+          <span data-lang-zh>外壳颜色</span><span data-lang-en>Shell colour</span>
+        </div>
+        <div class="swatches" id="swatches" role="radiogroup" aria-label="外壳颜色"></div>
+
+        <div class="field-head" style="margin-top:1.1rem">
+          <span data-lang-zh>圆角</span><span data-lang-en>Corner radius</span>
+          <output id="cornerOut" class="mono">5 mm</output>
+        </div>
+        <input type="range" id="corner" min="0" max="16" step="1" value="5" />
+      </div>
+
+      <button class="btn btn-primary btn-block" id="export" disabled>
+        <span data-lang-zh>生成 3MF</span><span data-lang-en>Generate 3MF</span>
+      </button>
+
+      <div class="progress" id="progress" hidden>
+        <div class="progress-bar"><i id="progressFill"></i></div>
+        <p class="mono" id="progressText">—</p>
+      </div>
+
+      <p class="err" id="error" hidden></p>
+    </section>
+
+    <!-- ============ 右：预览 ============ -->
+    <section class="panel preview-panel" aria-label="预览">
+      <div class="preview-stage" id="stage">
+        <p class="preview-empty" id="empty">
+          <span data-lang-zh>预览会显示打印出来点亮后的样子<br />——不是原图</span>
+          <span data-lang-en>The preview shows the printed result lit from behind<br />— not your original</span>
+        </p>
+        <canvas id="preview" hidden></canvas>
+      </div>
+
+      <dl class="stats" id="stats" hidden>
+        <div><dt data-lang-zh>成品尺寸</dt><dt data-lang-en>Size</dt><dd class="mono" id="stSize">—</dd></div>
+        <div><dt data-lang-zh>厚度</dt><dt data-lang-en>Thickness</dt><dd class="mono" id="stThick">—</dd></div>
+        <div><dt data-lang-zh>打印网格</dt><dt data-lang-en>Print grid</dt><dd class="mono" id="stGrid">—</dd></div>
+        <div><dt data-lang-zh>用色</dt><dt data-lang-en>Ink coverage</dt><dd class="mono" id="stInk">—</dd></div>
+      </dl>
+
+      <div class="done" id="done" hidden>
+        <p><strong data-lang-zh>做好了</strong><strong data-lang-en>Ready</strong></p>
+        <p class="mono" id="doneMeta">—</p>
+        <a class="btn btn-primary" id="download" download>
+          <span data-lang-zh>下载 3MF</span><span data-lang-en>Download 3MF</span>
+        </a>
+        <p class="hint">
+          <span data-lang-zh>用 Bambu Studio 打开 · 1–4 号槽装青/品红/黄/白 PLA · 画片盘务必 0.08mm 层高、100% 填充</span>
+          <span data-lang-en>Open in Bambu Studio · slots 1–4 = cyan/magenta/yellow/white PLA · picture plate must be 0.08 mm at 100% infill</span>
+        </p>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="shell footer-base" style="margin-top:0;border:0">
+    <span>© 2026 触光工坊 Touch &amp; Light · PolyForm Noncommercial 1.0.0</span>
+    <a href="https://github.com/2172711631-wq/CMYW_Studio" rel="noopener">GitHub</a>
+  </div>
+</footer>
+
+<script type="module" src="/src/ui/studio.ts"></script>
+</body>
+</html>

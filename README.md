@@ -133,7 +133,7 @@ docs/                   How it works, printing guide
 
 ## Roadmap
 
-- [ ] **Browser version** — the whole engine ported to TypeScript so it runs on your own
+- [x] **Browser version** — the whole engine ported to TypeScript so it runs on your own
       machine or phone with nothing to install, and no upload of your photos anywhere
 - [ ] Calibration target + a guide for tuning the optical constants to your filament
 - [ ] Regression tests for the separation and shell geometry
