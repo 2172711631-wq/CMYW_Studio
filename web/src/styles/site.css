@@ -8,12 +8,14 @@
 
 :root {
   /* —— 夏夜 —— */
-  --night-deep: #070b16;
-  --night: #0c1224;
-  --night-soft: #141c33;
-  --night-raised: #1b2540;
-  --line: #24304f;
-  --line-soft: #1a2340;
+  /* 不能压到纯黑：真正的夏夜天空是有亮度的靛蓝，压死了就失去层次，
+     暖光也没有东西可以衬托。 */
+  --night-deep: #0e1526;
+  --night: #161e36;
+  --night-soft: #202b48;
+  --night-raised: #2a3757;
+  --line: #374566;
+  --line-soft: #2a3654;
 
   /* —— 透出来的光 —— */
   --glow: #ffb16b;
@@ -23,9 +25,9 @@
   --moon: #6fd3f0;
 
   /* —— 文字：微暖纸白，不用冷白 —— */
-  --paper: #efe7da;
-  --paper-dim: #a7afc4;
-  --paper-faint: #6b7492;
+  --paper: #f2ece1;
+  --paper-dim: #b8c0d4;
+  --paper-faint: #8891ab;
 
   --font-display: "Fraunces", "Noto Serif SC", "Songti SC", "Source Han Serif SC", serif;
   --font-body: "Karla", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
@@ -56,7 +58,11 @@ html {
 
 body {
   margin: 0;
-  background: var(--night);
+  /* 顶部一层极淡的天光，让整页不是一块平涂 */
+  background:
+    radial-gradient(120% 70% at 50% -10%, #1e2947 0%, transparent 62%),
+    var(--night);
+  background-attachment: fixed;
   color: var(--paper);
   font-family: var(--font-body);
   font-size: var(--step-0);
@@ -236,8 +242,8 @@ img { max-width: 100%; display: block; }
   transform: translateY(-50%);
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--glow) 26%, transparent) 0%,
-    color-mix(in srgb, var(--dusk) 10%, transparent) 38%,
+    color-mix(in srgb, var(--glow) 34%, transparent) 0%,
+    color-mix(in srgb, var(--dusk) 14%, transparent) 38%,
     transparent 68%
   );
   filter: blur(30px);
@@ -249,12 +255,13 @@ img { max-width: 100%; display: block; }
   50% { opacity: 1; transform: translateY(-50%) scale(1.06); }
 }
 
-#fireflies {
+.fireflies {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+  z-index: 1;
 }
 
 .hero-grid {
@@ -389,10 +396,17 @@ img { max-width: 100%; display: block; }
 .fact-k { font-size: 0.78rem; color: var(--paper-faint); margin-top: 0.15rem; }
 
 /* ---------------- 画廊 ---------------- */
+/* 等高对齐画廊：每张图按自己的宽高比占位，同一行等高，谁也不被裁。
+   flex-basis 与比例成正比，因此比例接近的图会自然落在一起。
+   --ar 由每个 figure 用行内样式给出（宽 ÷ 高）。 */
 .gallery {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: clamp(0.8rem, 2vw, 1.4rem);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+.gallery .shot {
+  flex: var(--ar, 1) 1 calc(var(--ar, 1) * 260px);
+  min-width: min(100%, 240px);
 }
 .shot {
   position: relative;
@@ -404,10 +418,11 @@ img { max-width: 100%; display: block; }
 }
 .shot img {
   width: 100%;
-  aspect-ratio: 3 / 4;
-  object-fit: cover;
+  height: auto;
+  aspect-ratio: var(--ar, 1);
+  object-fit: contain;
   transition: transform 0.7s var(--ease), filter 0.5s;
-  filter: saturate(0.94);
+  filter: saturate(0.96);
 }
 .shot:hover {
   transform: translateY(-4px);

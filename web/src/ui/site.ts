@@ -88,13 +88,12 @@ interface Fly {
 }
 
 /**
- * 夏夜的那几点光。刻意做得很克制：十来个、飘得很慢、亮度很低。
- * 多了就从「氛围」变成「特效」，会显得廉价。
+ * 夏夜的那几点光。
+ *
+ * 分三档大小：近处的大而亮、远处的小而暗，靠这个拉出景深，
+ * 比同样大小放一堆更像真的。飘得依然很慢 —— 速度一快就成了雪花。
  */
-function initFireflies(): void {
-  const canvas = document.getElementById("fireflies") as HTMLCanvasElement | null;
-  if (!canvas || prefersReduced()) return;
-
+function initFirefliesOn(canvas: HTMLCanvasElement, density: number): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
@@ -105,21 +104,30 @@ function initFireflies(): void {
   const resize = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const { width, height } = canvas.getBoundingClientRect();
+    if (width === 0 || height === 0) return;
     canvas.width = Math.max(1, Math.floor(width * dpr));
     canvas.height = Math.max(1, Math.floor(height * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // 小屏少放几只，别糊住内容
-    const count = width < 640 ? 7 : 12;
-    flies = Array.from({ length: count }, () => ({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      vx: (Math.random() - 0.5) * 0.16,
-      vy: (Math.random() - 0.5) * 0.12,
-      r: 1.1 + Math.random() * 1.5,
-      phase: Math.random() * Math.PI * 2,
-      speed: 0.5 + Math.random() * 0.7,
-    }));
+    // 按面积算数量，大屏不至于显得稀疏，小屏不至于糊住内容
+    const base = Math.sqrt((width * height) / 90000);
+    const count = Math.round(Math.min(46, Math.max(9, base * density)));
+
+    flies = Array.from({ length: count }, () => {
+      // 三档景深：远 / 中 / 近
+      const depth = Math.random();
+      const near = depth > 0.82 ? 2 : depth > 0.45 ? 1 : 0;
+      const scale = [0.62, 1, 1.55][near];
+      return {
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.18 * scale,
+        vy: (Math.random() - 0.5) * 0.13 * scale,
+        r: (0.9 + Math.random() * 1.3) * scale,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.42 + Math.random() * 0.8,
+      };
+    });
   };
 
   const frame = (t: number) => {
@@ -141,14 +149,21 @@ function initFireflies(): void {
       if (f.y < -20) f.y = height + 20;
       if (f.y > height + 20) f.y = -20;
 
-      const pulse = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 0.001 * f.speed + f.phase));
-      const glow = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * 7);
-      glow.addColorStop(0, `rgba(255, 216, 150, ${0.5 * pulse})`);
-      glow.addColorStop(0.4, `rgba(255, 177, 107, ${0.16 * pulse})`);
+      const pulse = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * 0.001 * f.speed + f.phase));
+      const rad = f.r * 8;
+      const glow = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, rad);
+      glow.addColorStop(0, `rgba(255, 226, 172, ${0.72 * pulse})`);
+      glow.addColorStop(0.28, `rgba(255, 190, 120, ${0.3 * pulse})`);
       glow.addColorStop(1, "rgba(255, 177, 107, 0)");
       ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(f.x, f.y, f.r * 7, 0, Math.PI * 2);
+      ctx.arc(f.x, f.y, rad, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 中心一点实心亮核，远看才像"一只虫"而不是一团雾
+      ctx.fillStyle = `rgba(255, 240, 205, ${0.85 * pulse})`;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.r * 0.55, 0, Math.PI * 2);
       ctx.fill();
     }
     raf = requestAnimationFrame(frame);
@@ -169,6 +184,13 @@ function initFireflies(): void {
   });
 
   raf = requestAnimationFrame(frame);
+}
+
+function initFireflies(): void {
+  if (prefersReduced()) return;
+  document
+    .querySelectorAll<HTMLCanvasElement>("canvas.fireflies")
+    .forEach((c) => initFirefliesOn(c, Number(c.dataset.density ?? 14)));
 }
 
 initLang();
