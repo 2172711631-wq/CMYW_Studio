@@ -319,7 +319,20 @@ img { max-width: 100%; height: auto; display: block; }
   filter: drop-shadow(0 24px 70px rgba(0, 0, 0, 0.55))
     drop-shadow(0 0 60px color-mix(in srgb, var(--glow) 32%, transparent));
 }
-.hero-figure img { width: 100%; }
+.hero-figure img {
+  width: 100%;
+  /* 照片是矩形的，直接放在夜色上会露出四条硬边，看起来像贴上去的。
+     用遮罩把边缘渐隐到透明 —— 注意这不改动照片本身的任何像素，
+     修过的调色原样保留，只是让它溶进页面。 */
+  --edge-fade: radial-gradient(
+    ellipse 80% 80% at 50% 48%,
+    #000 50%,
+    rgba(0, 0, 0, 0.6) 76%,
+    transparent 96%
+  );
+  -webkit-mask-image: var(--edge-fade);
+  mask-image: var(--edge-fade);
+}
 .hero-figure figcaption {
   margin-top: 0.5rem;
   text-align: center;
