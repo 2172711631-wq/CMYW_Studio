@@ -108,12 +108,26 @@
 
     <!-- ============ 右：预览 ============ -->
     <section class="panel preview-panel" aria-label="预览">
+      <div class="view-switch" id="viewSwitch" role="group" aria-label="预览方式" hidden>
+        <button type="button" data-view="flat" aria-pressed="true">
+          <span data-lang-zh>平面</span><span data-lang-en>Flat</span>
+        </button>
+        <button type="button" data-view="solid" aria-pressed="false">
+          <span data-lang-zh>立体</span><span data-lang-en>3D</span>
+        </button>
+      </div>
+
       <div class="preview-stage" id="stage">
         <p class="preview-empty" id="empty">
           <span data-lang-zh>预览会显示打印出来点亮后的样子<br />——不是原图</span>
           <span data-lang-en>The preview shows the printed result lit from behind<br />— not your original</span>
         </p>
         <canvas id="preview" hidden></canvas>
+        <canvas id="view3d" hidden></canvas>
+        <p class="view-hint" id="viewHint" hidden>
+          <span data-lang-zh>拖动旋转 · 滚轮缩放 · 双击复位</span>
+          <span data-lang-en>Drag to rotate · scroll to zoom · double-click to reset</span>
+        </p>
       </div>
 
       <dl class="stats" id="stats" hidden>

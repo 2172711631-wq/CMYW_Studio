@@ -112,6 +112,11 @@ a:hover { color: var(--glow-bright); }
    图片会被纵向拉伸。宽高属性保留是为了避免加载前的布局跳动。 */
 img { max-width: 100%; height: auto; display: block; }
 
+/* [hidden] 只是 UA 样式表里的一条 display:none，作者侧任何 display 声明都能盖掉它。
+   给某个元素写了 display:flex/block 之后 hidden 会突然失效，而且不报错、很难查，
+   所以在这里显式钉死。 */
+[hidden] { display: none !important; }
+
 .shell { width: var(--shell); margin-inline: auto; }
 
 /* 小字标签：小型大写 + 字距，负责"专业"的那一层秩序感 */

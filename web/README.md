@@ -42,6 +42,7 @@ src/engine/           解算引擎，与 Python 版逐像素对齐
   corner.ts             圆角遮罩
   shell.ts              参数化外壳网格
   simulate.ts           透光模拟（预览用）
+  preview3d.ts          立体预览（原生 WebGL2，无第三方库）
   zip.ts / threemf.ts   3MF 打包
 src/worker/           解算工作线程
 src/ui/               页面交互

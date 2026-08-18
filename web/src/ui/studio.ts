@@ -8,6 +8,7 @@
 
 import "./site";
 import { DEFAULT_MM_PER_PX, GRID_MAX, GRID_MIN } from "../engine/constants";
+import { Preview3D, type Preview3DShell } from "../engine/preview3d";
 import type { WorkerRequest, WorkerResponse } from "../worker/engine.worker";
 
 /** 拓竹 PLA 常用色，作为外壳可选项。 */
@@ -46,6 +47,9 @@ const els = {
   stage: $<HTMLDivElement>("stage"),
   empty: $<HTMLParagraphElement>("empty"),
   preview: $<HTMLCanvasElement>("preview"),
+  view3d: $<HTMLCanvasElement>("view3d"),
+  viewSwitch: $<HTMLDivElement>("viewSwitch"),
+  viewHint: $<HTMLParagraphElement>("viewHint"),
   stats: $<HTMLElement>("stats"),
   stSize: $<HTMLElement>("stSize"),
   stThick: $<HTMLElement>("stThick"),
@@ -69,6 +73,16 @@ let shellHex = SHELL_COLOURS[0].hex;
 let reqId = 0;
 let previewToken = 0;
 let downloadUrl: string | null = null;
+
+/** 发出预览请求时记下当时的尺寸与外壳参数，结果回来时要用。 */
+let pending: { widthMm: number; heightMm: number; shell: Preview3DShell | null } | null = null;
+/** 最近一次算好的场景，用来在两种预览之间瞬间切换，不必重算。 */
+let scene: { image: ImageData; thicknessMm: number } | null = null;
+
+let view: "flat" | "solid" = "flat";
+let viewer: Preview3D | null = null;
+/** 3D 场景是否落后于最新的解算结果。切回平面时不重建，省掉白做的功。 */
+let viewerStale = true;
 
 const worker = new Worker(new URL("../worker/engine.worker.ts", import.meta.url), {
   type: "module",
@@ -135,6 +149,18 @@ function clearOutput(): void {
 
 /* ---------------- 预览 ---------------- */
 
+/** 当前界面上的外壳设置。导出与立体预览共用同一组数字，不会各说各话。 */
+function shellSettings(): Preview3DShell | null {
+  if (!els.withShell.checked) return null;
+  return {
+    wall: 3,
+    depth: 18,
+    corner: Number(els.corner.value),
+    clearance: 0.2,
+    colorHex: shellHex,
+  };
+}
+
 function requestPreview(): void {
   if (!source) return;
   clearOutput();
@@ -149,6 +175,7 @@ function requestPreview(): void {
 
   const id = ++reqId;
   previewToken = id;
+  pending = { widthMm, heightMm, shell: shellSettings() };
   const msg: WorkerRequest = {
     type: "preview",
     id,
@@ -167,9 +194,59 @@ function drawPreview(image: ImageData): void {
   const ctx = els.preview.getContext("2d");
   if (!ctx) return;
   ctx.putImageData(image, 0, 0);
-  els.preview.hidden = false;
   els.empty.hidden = true;
   els.stats.hidden = false;
+  if (Preview3D.isSupported()) els.viewSwitch.hidden = false;
+}
+
+/* ---------------- 立体预览 ---------------- */
+
+/**
+ * 把最近一次的解算结果推给 3D 视图。
+ *
+ * 贴图就是平面预览那张 ImageData，原分辨率直接上 GPU —— 两种看法用的是
+ * 同一份数据，不存在「3D 那边糊一点」的情况。
+ */
+function syncViewer(): void {
+  if (!viewer || !scene || !pending || !viewerStale) return;
+  viewerStale = false;
+  viewer.setScene({
+    image: scene.image,
+    artW: pending.widthMm,
+    artH: pending.heightMm,
+    artThicknessMm: scene.thicknessMm,
+    shell: pending.shell,
+  });
+}
+
+function setView(next: "flat" | "solid"): void {
+  view = next;
+  const solid = next === "solid";
+
+  for (const b of els.viewSwitch.querySelectorAll<HTMLButtonElement>("button")) {
+    b.setAttribute("aria-pressed", String(b.dataset.view === next));
+  }
+
+  if (solid && !viewer) {
+    // WebGL 上下文到这一刻才创建：只看平面预览的人一分钱开销都不用付
+    try {
+      viewer = new Preview3D(els.view3d);
+    } catch (err) {
+      showError(t(
+        `立体预览打不开：${err instanceof Error ? err.message : String(err)}`,
+        `The 3D view could not start: ${err instanceof Error ? err.message : String(err)}`,
+      ));
+      els.viewSwitch.hidden = true;
+      view = "flat";
+      return;
+    }
+    syncViewer();
+  }
+
+  els.preview.hidden = solid || !scene;
+  els.view3d.hidden = !solid;
+  els.viewHint.hidden = !solid;
+  if (solid) viewer?.invalidate();
 }
 
 /* ---------------- 导出 ---------------- */
@@ -194,15 +271,7 @@ function startExport(): void {
     widthMm,
     heightMm,
     pictureName: source.name.replace(/\.[^.]+$/, "") || "CMYW Studio",
-    shell: els.withShell.checked
-      ? {
-          wall: 3,
-          depth: 18,
-          corner: Number(els.corner.value),
-          clearance: 0.2,
-          colorHex: shellHex,
-        }
-      : null,
+    shell: shellSettings(),
   };
   worker.postMessage(msg, [rgb.buffer]);
 }
@@ -218,7 +287,11 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (msg.type === "preview") {
     // 拖动滑块会连发请求，只认最后一次的结果
     if (msg.id !== previewToken) return;
+    scene = { image: msg.image, thicknessMm: msg.thicknessMm };
+    viewerStale = true;
     drawPreview(msg.image);
+    if (view === "solid") syncViewer();
+    els.preview.hidden = view === "solid";
     els.stThick.textContent = `${msg.thicknessMm.toFixed(2)} mm · ${msg.stack} ${t("层", "layers")}`;
     els.stInk.textContent =
       `C ${msg.coverage.c.toFixed(0)}% · M ${msg.coverage.m.toFixed(0)}% · Y ${msg.coverage.y.toFixed(0)}%`;
@@ -335,9 +408,16 @@ for (const c of SHELL_COLOURS) {
     els.swatches.querySelectorAll<HTMLButtonElement>(".swatch").forEach((el) => {
       el.setAttribute("aria-checked", String(el.style.background === b.style.background));
     });
+    // 换颜色不影响分色，也不影响几何 —— 只改一个 uniform，不要重算
+    if (pending?.shell) pending.shell.colorHex = c.hex;
+    viewer?.setShellColor(c.hex);
     clearOutput();
   });
   els.swatches.append(b);
+}
+
+for (const b of els.viewSwitch.querySelectorAll<HTMLButtonElement>("button")) {
+  b.addEventListener("click", () => setView(b.dataset.view === "solid" ? "solid" : "flat"));
 }
 
 syncSize();

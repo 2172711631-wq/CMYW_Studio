@@ -164,6 +164,63 @@ input[type="range"]::-moz-range-thumb {
 
 /* ---------------- 预览 ---------------- */
 .preview-panel { min-height: 420px; }
+
+/* 平面 / 立体 切换。两种看法回答的是两个问题：
+   平面看的是像素怎么落，立体看的是这东西摆在桌上长什么样。 */
+.view-switch {
+  align-self: flex-end;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--night-deep) 60%, transparent);
+}
+.view-switch button {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0.34rem 0.95rem;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
+  color: var(--paper-dim);
+  background: transparent;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.view-switch button:hover { color: var(--paper); }
+.view-switch button[aria-pressed="true"] {
+  color: var(--night-deep);
+  background: var(--glow-bright);
+}
+
+#view3d {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  max-height: 62vh;
+  display: block;
+  touch-action: none;   /* 拖着转的时候别让页面跟着滚 */
+  cursor: grab;
+}
+#view3d:active { cursor: grabbing; }
+
+.view-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 0.7rem;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 0.28rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  color: var(--paper-faint);
+  background: color-mix(in srgb, var(--night-deep) 70%, transparent);
+  pointer-events: none;
+  white-space: nowrap;
+}
 .preview-stage {
   position: relative;
   flex: 1;
