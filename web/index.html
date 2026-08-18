@@ -25,6 +25,9 @@
 </head>
 <body>
 
+<!-- 夜色氛围层：整页一张，固定在内容后面。见 src/ui/atmosphere.ts -->
+<canvas class="atmosphere" aria-hidden="true"></canvas>
+
 <nav class="nav" id="nav">
   <a class="brand" href="/">
     触光工坊<span>Touch &amp; Light</span>
@@ -41,7 +44,6 @@
 </nav>
 
 <header class="hero">
-  <canvas class="fireflies" data-density="18" aria-hidden="true"></canvas>
   <div class="shell hero-grid">
     <div>
       <p class="label" data-lang-zh>彩色透光画 · 夏夜限定</p>
@@ -222,9 +224,8 @@
 
 <hr class="rule" />
 
-<section class="section" style="position:relative;overflow:hidden">
-  <canvas class="fireflies" data-density="12" aria-hidden="true"></canvas>
-  <div class="shell" style="text-align:center;position:relative;z-index:2">
+<section class="section">
+  <div class="shell" style="text-align:center">
     <div data-reveal>
       <h2 style="font-size:var(--step-4);max-width:20ch;margin-inline:auto" data-lang-zh>今晚就可以开始打</h2>
       <h2 style="font-size:var(--step-4);max-width:20ch;margin-inline:auto" data-lang-en>You could start printing tonight</h2>

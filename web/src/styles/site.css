@@ -58,7 +58,10 @@ html {
 
 body {
   margin: 0;
-  /* 顶部一层极淡的天光，让整页不是一块平涂 */
+  /* 顶部一层极淡的天光，让整页不是一块平涂。
+     注意：这个背景是靠「html 没有背景」才被提升到视口层绘制的，
+     氛围层（.atmosphere，z-index: -1）正好落在它上面、内容下面。
+     一旦给 html 加背景，这条链就断了，氛围层会整个看不见。 */
   background:
     radial-gradient(120% 70% at 50% -10%, #1e2947 0%, transparent 62%),
     var(--night);
@@ -256,19 +259,23 @@ img { max-width: 100%; height: auto; display: block; }
   filter: blur(30px);
   animation: breathe 9s ease-in-out infinite;
   pointer-events: none;
+  z-index: -2;
 }
 @keyframes breathe {
   0%, 100% { opacity: 0.75; transform: translateY(-50%) scale(1); }
   50% { opacity: 1; transform: translateY(-50%) scale(1.06); }
 }
 
-.fireflies {
-  position: absolute;
+/* 整页一张，固定不随滚动走 —— 视差由脚本按层给，不靠 CSS。
+   z-index: -1 是刻意的：正数会让发光块盖在正文上（定位元素的绘制层在
+   非定位行内内容之上），-1 则稳稳待在所有内容之后、页面底色之上。 */
+.atmosphere {
+  position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 1;
+  z-index: -1;
 }
 
 .hero-grid {
