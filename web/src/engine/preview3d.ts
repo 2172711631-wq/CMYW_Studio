@@ -690,7 +690,9 @@ export class Preview3D {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
       if (this.pointers.size === 1) {
-        this.yaw += (e.clientX - prev.x) * 0.008;
+        // 减号：转的是相机，不是物体。手往右拖，相机得往左绕，
+        // 看上去才是「物体跟着手往右转」。加号会得到完全相反的手感。
+        this.yaw -= (e.clientX - prev.x) * 0.008;
         this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch + (e.clientY - prev.y) * 0.008));
         this.invalidate();
       } else if (this.pointers.size === 2) {
