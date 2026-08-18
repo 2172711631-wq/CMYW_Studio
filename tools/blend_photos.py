@@ -2,11 +2,18 @@
 """把实拍照片融进站点夜色 / Blend product photos into the site's night palette.
 
 问题：实拍照片各有各的房间背景（书桌、显示器、墙），直接放到深色页面上
-像贴了几张卡片，很突兀。硬抠背景又会丢掉辉光和桌面反光 —— 那恰恰是这个
-产品最好看的部分。
+像贴了几张卡片，很突兀。
 
-做法：发光面板保持锐利，背景重度模糊 + 降饱和 + 向站点靛蓝偏移，
-最后按椭圆径向淡出到透明，让照片自然溶进页面。
+第一版试过按「发光面板」分割，清晰保留面板、模糊其余部分。这条路走不通：
+分割一旦不准就会留下硬边 —— 桌面被切出斜边、面板贴到画幅边缘导致淡出
+没走完就被截断，反而比不处理更难看。掩码越努力，失败时越显眼。
+
+现在的做法完全不依赖分割：以画面中心为原点，向外**连续**地
+  · 加深模糊
+  · 偏向站点底色
+  · 降低不透明度
+三者由同一条平滑曲线驱动，结构上就不可能出现硬边。画幅四周还会补一圈
+底色留白，保证淡出一定能在画布内完成。
 
 用法 / Usage:
     py -3.11 tools/blend_photos.py
@@ -21,12 +28,14 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC_DIR = ROOT / "web" / "photos"          # 原始实拍照片
-OUT_DIR_NOTE = "处理结果直接进 web/public/img，供页面引用"
+SRC_DIR = ROOT / "web" / "photos"
 OUT_DIR = ROOT / "web" / "public" / "img"
 
-# 站点底色 #161E36，OpenCV 用 BGR
+# 站点底色 #161E36。OpenCV 用 BGR 排列。
 NIGHT_BGR = np.array([54, 30, 22], np.float32)
+
+# 画幅四周补多少留白（相对短边），给淡出留出空间
+PAD_RATIO = 0.16
 
 JOBS = [
     ("real-monalisa", "monalisa"),
@@ -49,66 +58,54 @@ def smoothstep(x: np.ndarray, a: float, b: float) -> np.ndarray:
     return t * t * (3 - 2 * t)
 
 
-def largest_component(mask: np.ndarray) -> np.ndarray:
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
-    if count <= 1:
-        return mask
-    idx = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    return (labels == idx).astype(np.uint8) * 255
+def subject_center(bgr: np.ndarray) -> tuple[float, float]:
+    """发光面板的重心。灯箱是画面里唯一在发光的物体，用亮度定位即可。
 
-
-def panel_mask(bgr: np.ndarray) -> np.ndarray:
-    """发光面板的实心掩码。灯箱是画面里唯一在发光的物体，靠亮度就能定位。"""
+    这里只用它决定「哪里最清晰」，不用来抠图 —— 即使偏了几十像素，
+    结果也只是景深中心稍微偏一点，不会产生硬边。
+    """
     h, w = bgr.shape[:2]
     lightness = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)[..., 0]
-
-    mask = (lightness >= np.percentile(lightness, 86)).astype(np.uint8) * 255
-    # 大核闭运算：把面板内部被暗部割裂的亮块连成一整块
-    big = max(21, (min(h, w) // 18) | 1)
-    mask = largest_component(
-        cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((big, big), np.uint8), iterations=2)
-    )
-
-    # 补内部空洞：画片的暗部属于面板，不能被当成背景
-    flood = mask.copy()
-    cv2.floodFill(flood, np.zeros((h + 2, w + 2), np.uint8), (0, 0), 255)
-    mask = mask | cv2.bitwise_not(flood)
-
-    # 平滑轮廓。不做凸包 —— 凸包会把面板和桌面反光并成一个楔形。
-    small = max(9, (min(h, w) // 45) | 1)
-    ellipse = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (small, small))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, ellipse, iterations=2)
-    return largest_component(cv2.morphologyEx(mask, cv2.MORPH_OPEN, ellipse, iterations=1))
+    mask = (lightness >= np.percentile(lightness, 88)).astype(np.uint8)
+    if mask.sum() < 50:
+        return w / 2.0, h / 2.0
+    ys, xs = np.nonzero(mask)
+    return float(xs.mean()), float(ys.mean())
 
 
 def blend_into_night(bgr: np.ndarray) -> np.ndarray:
-    h, w = bgr.shape[:2]
-    img = bgr.astype(np.float32)
-    mask = panel_mask(bgr)
+    h0, w0 = bgr.shape[:2]
+    cx0, cy0 = subject_center(bgr)
 
-    ys, xs = np.where(mask > 0)
-    cx, cy = float(xs.mean()), float(ys.mean())
+    # 四周补底色留白，确保淡出在画布内走完（否则贴边的照片会被硬生生截断）
+    pad = int(min(h0, w0) * PAD_RATIO)
+    canvas = np.empty((h0 + pad * 2, w0 + pad * 2, 3), np.float32)
+    canvas[:] = NIGHT_BGR
+    canvas[pad : pad + h0, pad : pad + w0] = bgr.astype(np.float32)
+    h, w = canvas.shape[:2]
+    cx, cy = cx0 + pad, cy0 + pad
 
-    # 面板权重：本体为 1，向外柔和衰减
-    sharp = np.clip(
-        cv2.GaussianBlur(mask.astype(np.float32) / 255.0, (0, 0), sigmaX=min(h, w) * 0.018) * 1.4,
-        0.0,
-        1.0,
-    )[..., None]
-
-    # 背景：重模糊 → 降饱和去掉房间杂色 → 压暗并向靛蓝偏移
-    bg = cv2.GaussianBlur(img, (0, 0), sigmaX=min(h, w) * 0.05)
-    hsv = cv2.cvtColor(np.clip(bg, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
-    hsv[..., 1] *= 0.38
-    bg = cv2.cvtColor(np.clip(hsv, 0, 255).astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
-    bg = bg * 0.34 + NIGHT_BGR * 0.66
-
-    out = img * sharp + bg * (1.0 - sharp)
-
-    # 椭圆径向淡出。矩形衰减会在四角拉出对角线，看起来像个相框。
+    # 归一化椭圆距离：0 = 主体中心，1 ≈ 画布边缘
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
-    dist = np.sqrt(((xx - cx) / (w * 0.62)) ** 2 + ((yy - cy) / (h * 0.62)) ** 2)
-    alpha = np.clip(np.maximum(1.0 - smoothstep(dist, 0.55, 1.0), sharp[..., 0]), 0.0, 1.0)
+    dist = np.sqrt(((xx - cx) / (w * 0.55)) ** 2 + ((yy - cy) / (h * 0.55)) ** 2)
+
+    # 一条曲线驱动全部三件事，因此不会出现互相错位的边界
+    t = smoothstep(dist, 0.34, 0.92)[..., None]
+
+    # 1) 景深：中心锐利，向外连续过渡到重模糊
+    blurred = cv2.GaussianBlur(canvas, (0, 0), sigmaX=min(h, w) * 0.055)
+    hsv = cv2.cvtColor(np.clip(blurred, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv[..., 1] *= 0.40  # 降饱和，去掉房间的杂色
+    blurred = cv2.cvtColor(np.clip(hsv, 0, 255).astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+    out = canvas * (1.0 - t) + blurred * t
+
+    # 2) 调色：向站点底色偏移，边缘处几乎完全等于底色 —— 这样即使
+    #    alpha 还没到 0，颜色也已经和页面一致，不会看出色块
+    out = out * (1.0 - t * 0.92) + NIGHT_BGR * (t * 0.92)
+
+    # 3) 淡出：比调色稍晚开始，让颜色先对齐再消失
+    alpha = 1.0 - smoothstep(dist, 0.58, 1.02)
 
     return np.dstack([np.clip(out, 0, 255).astype(np.uint8), (alpha * 255).astype(np.uint8)])
 
@@ -134,7 +131,8 @@ def main() -> int:
         buf.tofile(str(out))
         print(f"  {dst:10} {w}×{h}  比例 {w / h:.2f}  {out.stat().st_size / 1024:.0f} KB")
 
-    print(f"\n输出目录 / output: {OUT_DIR}")
+    print(f"\n输出 / output: {OUT_DIR}")
+    print("页面上的 --ar 需要跟着更新（补白后比例会变）")
     return 0
 
 
