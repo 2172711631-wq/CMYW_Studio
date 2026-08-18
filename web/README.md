@@ -47,7 +47,7 @@ src/worker/           解算工作线程
 src/ui/               页面交互
 src/styles/           样式
 public/               静态资源，原样复制到 dist/
-photos/               实拍原图（tools/blend_photos.py 的输入）
+photos/               实拍原图（tools/prepare_photos.py 的输入）
 test/                 与 Python 基准的一致性测试
 ```
 
