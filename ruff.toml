@@ -1,0 +1,15 @@
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",  # 行宽由 formatter 控制，长常量表不强制换行
+    "B008",  # FastAPI/argparse 风格的默认值调用
+]
+
+[lint.per-file-ignores]
+# main.py 的 import 顺序承重：_ensure_dependencies() 必须先于 cv2/open3d 导入
+"main.py" = ["E402", "I001"]
+"modifier.py" = ["E402"]
+"cli.py" = ["E402"]

@@ -1,0 +1,42 @@
+CMYW Studio
+Copyright (C) 2025-2026 2172711631-wq
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See the LICENSE file for the full text.
+
+--------------------------------------------------------------------------
+Licence history / 许可历史
+--------------------------------------------------------------------------
+Releases up to and including v1.0.0 were published under the MIT License.
+Those releases remain available under the MIT terms; that grant is not
+revoked by this change. Everything from the first AGPL-3.0 commit onward is
+licensed under AGPL-3.0.
+
+v1.0.0 及更早的发布采用 MIT 协议，那些版本仍可按 MIT 使用，本次变更不撤销
+已经给出的授权。自首个 AGPL-3.0 提交起的所有内容采用 AGPL-3.0。
+
+--------------------------------------------------------------------------
+Trademarks / 商标
+--------------------------------------------------------------------------
+The name "CMYW Studio", the project logo, and any associated branding are NOT
+covered by the AGPL-3.0 licence. You may state that your work is "based on
+CMYW Studio", but you may not present a modified version as being the official
+CMYW Studio, nor use the name or logo to promote a fork in a way that suggests
+endorsement.
+
+「CMYW Studio」名称、项目标识及相关品牌元素不在 AGPL-3.0 授权范围内。你可以
+声明你的作品「基于 CMYW Studio」，但不得把修改版当作官方 CMYW Studio 发布，
+也不得以暗示官方背书的方式用该名称或标识推广分支。
+
+--------------------------------------------------------------------------
+Third-party / 第三方
+--------------------------------------------------------------------------
+"Bambu Lab", "Bambu Studio", "X1 Carbon" and "AMS" are trademarks of
+Shenzhen Tuozhu Technology Co., Ltd. This project is not affiliated with,
+endorsed by, or sponsored by Bambu Lab. Interoperability with the Bambu 3MF
+project format is implemented from the published format only.
+
+Sample images in docs/img/ are photographs of prints produced with this tool
+and are provided for documentation purposes.

@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "unit": "mm",
+  "description": "FDM lightbox shell parameters (code master)",
+  "parameters": {
+    "art_w": { "label": "画片宽", "default": 120.0, "min": 50.0, "max": 256.0 },
+    "art_h": { "label": "画片高", "default": 90.0, "min": 50.0, "max": 256.0 },
+    "art_thickness": { "label": "画片厚度/卡槽深", "default": 2.5, "min": 1.0, "max": 6.0 },
+    "wall": { "label": "侧壁/底壁厚", "default": 3.0, "min": 1.0, "max": 8.0 },
+    "top_thickness": { "label": "顶壁厚(触摸)", "default": 2.0, "min": 0.8, "max": 3.0 },
+    "depth": { "label": "外壳深度Z", "default": 18.0, "min": 8.0, "max": 60.0 },
+    "corner": { "label": "圆角", "default": 5.0, "min": 0.0, "max": 30.0 },
+    "clearance": { "label": "装配间隙", "default": 0.2, "min": 0.0, "max": 0.5 },
+    "fdm_tol": { "label": "FDM公差", "default": 0.2, "min": 0.0, "max": 0.6 }
+  },
+  "constants": {
+    "usb_nominal_w": 9.0,
+    "usb_nominal_h": 3.2,
+    "usb_nominal_r": 1.6,
+    "usb_lift_z": 1.55,
+    "usb_extra_out": 0.05,
+    "slot_outward": 5.0,
+    "top_thickness_hard_max": 3.0
+  }
+}

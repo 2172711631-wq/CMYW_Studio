@@ -1,35 +1,164 @@
-CMYW_Studio
-这是一个专为 Bambu Lab 打印机设计的 CMYW 多色光影画（Lithophane）生成工具。通过物理减色原理，该工具能够将普通彩色图片快速转换为适合 3D 打印的 .3mf 模型文件。
+<div align="center">
 
-功能特点
-高效转换：将图像颜色映射为物理层厚度，生成适用于多色打印的模型。
+# CMYW Studio
 
-格式兼容：直接输出标准的 .3mf 格式，完美兼容 Bambu Studio。
+**Most lithophanes are grayscale. This one prints in full colour.**
 
-轻量便捷：纯 Python 实现，依赖少，部署简单。
+Turn any photo into a backlit 3D print — colour and all — by stacking cyan, magenta,
+yellow and white filament and letting light do the mixing.
 
-环境要求
-Python 3.8+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Bambu Lab](https://img.shields.io/badge/Output-Bambu%203MF-00AE42.svg)](https://bambulab.com/)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-依赖库：请查看 requirements.txt
+[中文说明](README.zh-CN.md) · [How it works](docs/how-it-works.md) · [Printing guide](docs/printing-guide.md)
 
-快速开始
-1. 安装依赖
-在项目目录下运行以下命令安装必要的库：
+<img src="docs/img/sample-lit.webp" alt="A colour lithophane lit from behind" width="420">
 
-Bash
+</div>
+
+---
+
+## What this is
+
+A lithophane encodes an image in the *thickness* of a translucent print — thick where
+dark, thin where bright. Every lithophane generator you have used does this in one
+colour, so you get a sepia or grey image.
+
+CMYW Studio treats the print as a **subtractive colour stack** instead. Each pixel gets
+its own little tower of filament:
+
+| Layer | Filament | Job |
+|-------|----------|-----|
+| bottom | **White** — 4 layers, fixed | diffuses the backlight into an even ground |
+| ↓ | **Yellow** — 0–6 layers | absorbs blue |
+| ↓ | **Magenta** — 0–6 layers | absorbs green |
+| top | **Cyan** — 0–6 layers | absorbs red |
+
+Light from behind passes through the whole stack, each layer subtracts its part of the
+spectrum, and what leaves the front is a colour. At 0.08 mm per layer the entire image
+lives in under 1.8 mm of plastic.
+
+The generator also builds a **matching parametric lightbox shell** — rounded corners, a
+slot that grips the picture, and a USB-C cutout for the light board — and packs
+everything into a single Bambu Studio `.3mf` with the AMS slots and both build plates
+already set up.
+
+<div align="center">
+<img src="docs/img/sample-monalisa.webp" alt="Mona Lisa printed as a colour lithophane" width="270">
+<img src="docs/img/sample-handheld.webp" alt="A colour lithophane held in a hand" width="270">
+</div>
+
+## Why it looks better than a naive CMY split
+
+Splitting RGB straight into CMY layers gives muddy, grey-veiled results. Two things fix
+that, and they are the heart of this project:
+
+**Optical densities, not colour values.** Filament absorption follows Beer–Lambert, so
+the code works in density space — `e = (−ln T)^0.72 × 1.78` — rather than treating
+layer count as if it were an 8-bit channel.
+
+**Adaptive under-colour removal.** Wherever cyan, magenta and yellow all overlap they
+just make grey — expensive, slow to print, and it dulls the image. The generator pulls
+that common grey out (`k = min(c, m, y)`), keeps only the chromatic remainder, then adds
+a fraction back based on *that pixel's own brightness*, so shadows stay dense and
+highlights stay clean. No per-image knob to tune; swap the photo and it re-adapts.
+
+There is a full walkthrough with the formulas in **[docs/how-it-works.md](docs/how-it-works.md)**.
+
+## Quick start
+
+Requires **Python 3.11** (CadQuery, used for the shell, does not support 3.12+ yet).
+
+```bash
+git clone https://github.com/2172711631-wq/CMYW_Studio.git
+cd CMYW_Studio
 pip install -r requirements.txt
-2. 运行工具
-将你需要转换的图片放入目录，使用以下命令生成模型：
+```
 
-Bash
-python main.py --input your_image.jpg --output output_model.3mf
-(注：请根据你 main.py 实际支持的参数进行微调)
+Convert a photo:
 
-使用说明
-图片选择：建议使用高对比度、光影效果明显的彩色照片。
+```bash
+python cli.py photo.jpg
+```
 
-打印设置：生成的 .3mf 文件导入 Bambu Studio 后，建议使用 0.2mm 层高 并配合相应的 CMYW 耗材 进行切片打印，以达到最佳光影效果。
+That writes `photo.3mf` — open it in Bambu Studio and print. Some more control:
 
-开源协议
-本项目采用 MIT License 开源。
+```bash
+# 135 mm wide, white shell
+python cli.py photo.jpg --width 135 --shell-color "#FFFFFF"
+
+# exact frame size, no shell — just the picture
+python cli.py photo.jpg --width 160 --height 120 --no-shell
+
+# finer grid (sharper, but far more triangles and a slower slice)
+python cli.py photo.jpg --mm-per-px 0.15
+```
+
+`python cli.py --help` lists everything.
+
+Prefer buttons? `python main.py` opens the desktop app, with a 3D preview of the lit
+result before you commit to a print.
+
+> **Windows note:** if `python` points at 3.12, use `py -3.11` instead of `python`.
+
+## Printing it
+
+The short version — full details in **[docs/printing-guide.md](docs/printing-guide.md)**:
+
+| | |
+|---|---|
+| **Filament** | PLA. Slots 1–4 = Cyan, Magenta, Yellow, White. Slot 5 = shell colour |
+| **Layer height** | **0.08 mm** for the picture plate — this is not optional, the colour model assumes it |
+| **Shell plate** | 0.2 mm is fine, it is just a box |
+| **Infill** | 100% on the picture, or light leaks through the gaps |
+| **Backlight** | Any flat, even, diffuse USB-C panel. Point sources produce hotspots |
+
+Print the picture flat on the plate, image side down. Expect a lot of filament changes
+— that is the cost of colour, and the prime tower is pre-positioned in the 3MF.
+
+## Project layout
+
+```
+main.py                 Colour separation, voxel meshing, 3MF assembly, desktop GUI
+cli.py                  Command-line interface
+bambu_export.py         Bambu 3MF writer — plates, AMS slots, transforms, thumbnail
+shell.py                Lightbox shell built from the CadQuery master
+shell_master/           Parametric shell: params.json + CadQuery model + UG/NX expressions
+region_mesh.py          Alternative contour-based mesher (experimental)
+modifier.py             Small tool for re-exporting at a different size
+docs/                   How it works, printing guide
+```
+
+## Roadmap
+
+- [ ] **Browser version** — the whole engine ported to TypeScript so it runs on your own
+      machine or phone with nothing to install, and no upload of your photos anywhere
+- [ ] Calibration target + a guide for tuning the optical constants to your filament
+- [ ] Regression tests for the separation and shell geometry
+- [ ] Non-Bambu output (plain 3MF / per-colour STL) for other multi-material printers
+
+Ideas and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licence
+
+[GNU AGPL-3.0](LICENSE). Use it, change it, print with it, sell what you print.
+
+The one obligation: if you run a **modified** version as a network service, you have to
+publish your changes. That keeps hosted forks honest and gives everyone the improvements
+back. The project name and logo are not covered by the licence — see [NOTICE](NOTICE).
+
+*Earlier releases up to `v1.0.0` were published under MIT and remain available under
+those terms.*
+
+## Acknowledgements
+
+Built for the Bambu Lab X1C + AMS. The optical constants come from a long, expensive
+stack of test prints; if you re-derive better ones for your own filament, please open a
+PR with your measurements.
+
+<div align="center">
+<br>
+<sub>If this saved you a few wasted prints, a ⭐ helps other people find it.</sub>
+</div>

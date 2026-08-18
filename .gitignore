@@ -216,3 +216,30 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------
+# CMYW Studio
+# ---------------------------------------------------------------
+# 生成物 / generated output
+*.3mf
+*.stl
+!shell_master/preview_shell.stl
+
+# 打包产物 / build artifacts
+*.exe
+_internal/
+_unpack_tmp/
+_extracted/
+releases/
+
+# 本地站点数据（含顾客图与订单）绝不入库 / never commit local site data
+web/data/
+.env
+.env.production
+.tunnel-token
+cloudflared.exe
+
+# 本地备份 / local backups
+_restored/
+_src_decompiled/
+一键恢复*.bat

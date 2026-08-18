@@ -1,3 +1,7 @@
-numpy
-opencv-python
-pygame
+numpy>=2.0
+opencv-python>=4.8
+open3d>=0.19
+trimesh>=4.0
+shapely>=2.0
+cadquery>=2.4
+pyinstaller>=6.0

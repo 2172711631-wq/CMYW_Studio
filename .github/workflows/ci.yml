@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: Syntax and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 语法检查不需要装重型依赖（open3d / cadquery），CI 保持快且稳
+      - name: Compile all sources
+        run: python -m compileall -q main.py cli.py bambu_export.py shell.py region_mesh.py modifier.py preview_window.py ui_theme.py shell_master/
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint
+        run: ruff check --output-format=github .
+
+  cli:
+    name: CLI contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 只校验参数表未被破坏；完整转换需要 open3d/cadquery，留给本地与发布流程
+      - name: cli.py --help parses
+        run: python -c "import cli; cli.build_parser().parse_args(['x.jpg','--width','135','--no-shell']); print('CLI contract OK')"
