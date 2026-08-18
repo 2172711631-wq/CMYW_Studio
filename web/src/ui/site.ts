@@ -82,4 +82,4 @@ initNav();
 initReveal();
 
 const sky = document.querySelector<HTMLCanvasElement>("canvas.atmosphere");
-if (sky) initAtmosphere(sky);
+if (sky) initAtmosphere(sky, Number(sky.dataset.density ?? 1));

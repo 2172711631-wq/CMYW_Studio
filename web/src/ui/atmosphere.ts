@@ -55,7 +55,11 @@ function glowSprite(stops: Array<[number, string]>, size = 128): HTMLCanvasEleme
   return c;
 }
 
-export function initAtmosphere(canvas: HTMLCanvasElement): void {
+/**
+ * @param density 数量系数。制作台是干活的地方，压到一半就够了 ——
+ *   氛围是背景，不该跟预览里的颜色抢注意力。
+ */
+export function initAtmosphere(canvas: HTMLCanvasElement, density = 1): void {
   const ctx = canvas.getContext("2d", { alpha: true });
   if (!ctx || prefersReduced()) return;
 
@@ -104,9 +108,9 @@ export function initAtmosphere(canvas: HTMLCanvasElement): void {
     if (!reseed) return;
 
     // 数量按面积走：大屏不至于稀疏，手机上不至于糊住字
-    const area = (width * height) / 90000;
+    const area = ((width * height) / 90000) * density;
 
-    stars = Array.from({ length: Math.round(Math.min(90, Math.max(24, area * 9))) }, () => ({
+    stars = Array.from({ length: Math.round(Math.min(90, Math.max(24 * density, area * 9))) }, () => ({
       x: rand(0, width),
       y: rand(0, height),
       vx: 0,
@@ -130,7 +134,7 @@ export function initAtmosphere(canvas: HTMLCanvasElement): void {
       alpha: rand(0.5, 0.85),
     }));
 
-    flies = Array.from({ length: Math.round(Math.min(58, Math.max(14, area * 16))) }, () => {
+    flies = Array.from({ length: Math.round(Math.min(58, Math.max(14 * density, area * 16))) }, () => {
       // 三档景深：远 / 中 / 近。同样大小放一堆就只是一片点，不是夜晚。
       const d = Math.random();
       const tier = d > 0.82 ? 2 : d > 0.45 ? 1 : 0;
