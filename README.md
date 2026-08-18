@@ -12,9 +12,13 @@ yellow and white filament and letting light do the mixing.
 [![Bambu Lab](https://img.shields.io/badge/Output-Bambu%203MF-00AE42.svg)](https://bambulab.com/)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
+### [**→ Try it in your browser**](https://my-gpu-node.top/studio)
+
+No install, no account, no upload — the whole pipeline runs on your own device.
+
 [中文说明](README.zh-CN.md) · [How it works](docs/how-it-works.md) · [Printing guide](docs/printing-guide.md)
 
-<img src="docs/img/sample-lit.webp" alt="A colour lithophane lit from behind" width="420">
+<img src="docs/img/hero.jpg" alt="Three colour lithophanes lit from behind" width="760">
 
 </div>
 
@@ -46,8 +50,11 @@ everything into a single Bambu Studio `.3mf` with the AMS slots and both build p
 already set up.
 
 <div align="center">
-<img src="docs/img/sample-monalisa.webp" alt="Mona Lisa printed as a colour lithophane" width="270">
-<img src="docs/img/sample-handheld.webp" alt="A colour lithophane held in a hand" width="270">
+<img src="docs/img/sample-lit.webp" alt="A colour lithophane lit from behind" width="235">
+<img src="docs/img/sample-cool.webp" alt="A colour lithophane in cool tones" width="235">
+<img src="docs/img/sample-handheld.webp" alt="A colour lithophane held in a hand" width="235">
+
+<sub>Real prints, photographed as they are. No renders.</sub>
 </div>
 
 ## Why it looks better than a naive CMY split

@@ -14,7 +14,11 @@
 
 [English](README.md) · [原理详解](docs/how-it-works.md) · [打印指南](docs/printing-guide.md)
 
-<img src="docs/img/sample-lit.webp" alt="点亮的彩色透光画" width="420">
+### [**→ 直接在浏览器里试**](https://my-gpu-node.top/studio)
+
+不用装、不用注册、不用上传 —— 整条解算链路都在你自己的设备上跑。
+
+<img src="docs/img/hero.jpg" alt="三件点亮的彩色透光画" width="760">
 
 </div>
 
@@ -41,8 +45,11 @@ CMYW Studio 把打印件当成一个**减色叠层**来做。每个像素都有�
 然后把所有东西打包成一个 Bambu Studio 的 `.3mf`，AMS 槽位和两个盘都已经排好。
 
 <div align="center">
-<img src="docs/img/sample-monalisa.webp" alt="蒙娜丽莎彩色透光画" width="270">
-<img src="docs/img/sample-handheld.webp" alt="手持彩色透光画" width="270">
+<img src="docs/img/sample-lit.webp" alt="点亮的彩色透光画" width="235">
+<img src="docs/img/sample-cool.webp" alt="冷色调的彩色透光画" width="235">
+<img src="docs/img/sample-handheld.webp" alt="手持彩色透光画" width="235">
+
+<sub>都是真机打印、直接拍摄，没有渲染图。</sub>
 </div>
 
 ## 为什么比直接 CMY 分色好看
