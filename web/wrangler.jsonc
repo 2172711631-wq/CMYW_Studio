@@ -1,0 +1,14 @@
+{
+  // Workers 静态资源部署配置。
+  //
+  // 这个站没有服务端代码 —— 整条解算链路都在访客浏览器里跑 —— 所以这里
+  // 只声明一个资源目录，不需要 Worker 脚本。Cloudflare 会把 dist/ 直接
+  // 挂到全球 CDN 上。
+  //
+  // 部署命令：npx wrangler deploy（构建命令先跑 npm run build 产出 dist/）
+  "name": "cmyw-studio",
+  "compatibility_date": "2026-01-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
