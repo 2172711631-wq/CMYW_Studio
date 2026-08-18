@@ -77,17 +77,33 @@ def blend_into_night(bgr: np.ndarray) -> np.ndarray:
     h0, w0 = bgr.shape[:2]
     cx0, cy0 = subject_center(bgr)
 
-    # 四周补底色留白，确保淡出在画布内走完（否则贴边的照片会被硬生生截断）
-    pad = int(min(h0, w0) * PAD_RATIO)
-    canvas = np.empty((h0 + pad * 2, w0 + pad * 2, 3), np.float32)
-    canvas[:] = NIGHT_BGR
-    canvas[pad : pad + h0, pad : pad + w0] = bgr.astype(np.float32)
-    h, w = canvas.shape[:2]
-    cx, cy = cx0 + pad, cy0 + pad
+    # 主体先补白到画布正中。
+    #
+    # 这一步是必须的：椭圆淡出以主体为圆心，若主体偏向某侧，离得近的那两条
+    # 边还没衰减到 0 就被画幅截断，页面上会看到一条笔直的亮边。补成正中后，
+    # 圆心到四边等距，淡出一定走得完。
+    pad_left = int(max(0.0, w0 - 2 * cx0))
+    pad_right = int(max(0.0, 2 * cx0 - w0))
+    pad_top = int(max(0.0, h0 - 2 * cy0))
+    pad_bottom = int(max(0.0, 2 * cy0 - h0))
 
-    # 归一化椭圆距离：0 = 主体中心，1 ≈ 画布边缘
+    # 再加一圈统一留白，让 alpha 在触到边界之前就已经归零
+    margin = int(min(h0, w0) * PAD_RATIO)
+    pad_left += margin
+    pad_right += margin
+    pad_top += margin
+    pad_bottom += margin
+
+    h = h0 + pad_top + pad_bottom
+    w = w0 + pad_left + pad_right
+    canvas = np.empty((h, w, 3), np.float32)
+    canvas[:] = NIGHT_BGR
+    canvas[pad_top : pad_top + h0, pad_left : pad_left + w0] = bgr.astype(np.float32)
+    cx, cy = w / 2.0, h / 2.0
+
+    # 归一化椭圆距离：0 = 画布中心（即主体），1 = 最近的那条边
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
-    dist = np.sqrt(((xx - cx) / (w * 0.55)) ** 2 + ((yy - cy) / (h * 0.55)) ** 2)
+    dist = np.sqrt(((xx - cx) / (w / 2.0)) ** 2 + ((yy - cy) / (h / 2.0)) ** 2)
 
     # 一条曲线驱动全部三件事，因此不会出现互相错位的边界
     t = smoothstep(dist, 0.34, 0.92)[..., None]
