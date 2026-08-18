@@ -12,12 +12,32 @@
 
 ---
 
-## 一、创建 Pages 项目（约 3 分钟）
+## 一、创建项目（约 3 分钟）
 
-1. 打开 <https://dash.cloudflare.com> 登录
-2. 左侧菜单 **Workers 和 Pages** → **创建** → 选 **Pages** 标签 → **连接到 Git**
-3. 授权 GitHub，选择仓库 **`CMYW_Studio`**
-4. 在「设置构建和部署」里，**四项必须按下表填**：
+### 怎么找到入口
+
+Cloudflare 在 2026 年把 Pages 并进了 Workers，**很多账号里已经没有单独的
+「Pages」菜单了**。最省事的办法是直接用这个链接跳过去，不用在菜单里找：
+
+```
+https://dash.cloudflare.com/?to=/:account/workers-and-pages
+```
+
+要自己找的话，左侧菜单可能叫 **计算 (Workers)**、**Workers 和 Pages**、
+或者干脆就叫 **Workers** —— 取决于你的账号版本。
+
+### 连接仓库
+
+进去之后点 **创建 / Create**，然后看到哪种界面走哪种，结果一样：
+
+- **有「Pages」标签页** → 切过去 → **连接到 Git**
+- **只有 Workers 界面**（新版账号多是这样）→ **导入 Git 仓库 / Import a repository**
+
+授权 GitHub，选择仓库 **`CMYW_Studio`**。
+
+### 构建设置
+
+在「设置构建和部署」里，**四项必须按下表填**：
 
 | 项目 | 填什么 |
 |---|---|
