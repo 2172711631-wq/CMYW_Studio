@@ -49,6 +49,7 @@ src/ui/               页面交互
 src/styles/           样式
 public/               静态资源，原样复制到 dist/
 photos/               实拍原图（tools/prepare_photos.py 的输入）
+public/               图标、分享卡、_headers（tools/make_brand_assets.py 生成前两样）
 test/                 与 Python 基准的一致性测试
 ```
 

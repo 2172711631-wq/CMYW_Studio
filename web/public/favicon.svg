@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="触光工坊">
+  <!-- 一块点亮的画片装在圆角外壳里。16px 下细节全看不见，
+       所以只留两样东西：暖光的形状，和一圈把它从深色标签栏里衬出来的框。 -->
+  <defs>
+    <radialGradient id="lit" cx="50%" cy="44%" r="66%">
+      <stop offset="0%" stop-color="#FFF0D6"/>
+      <stop offset="52%" stop-color="#FFB16B"/>
+      <stop offset="100%" stop-color="#D9762E"/>
+    </radialGradient>
+  </defs>
+  <rect x="3" y="2" width="26" height="28" rx="6" fill="#2A3757"/>
+  <rect x="6" y="5" width="20" height="22" rx="3.4" fill="url(#lit)"/>
+</svg>
