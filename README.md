@@ -59,6 +59,32 @@ already set up.
 
 ## Why it looks better than a naive CMY split
 
+### See it
+
+Same photo, same optics, same simulation — only the separation differs. Left is the
+naive split this project shipped as its `v1` profile; right is `v2`, which is what you
+get today.
+
+| Naive RGB → CMY split | Adaptive UCR + ordered dithering |
+|---|---|
+| <img src="docs/img/compare-naive.webp" width="330"> | <img src="docs/img/compare-ucr.webp" width="330"> |
+| Neutral and dark areas receive all three colours at once. They collapse into flat black, and what survives posterises into hard bands — only 7 levels per channel. | The shared grey is pulled out and only partly added back, weighted by how dark the pixel already is. Shadows keep their detail, and dithering turns the bands into fine texture. |
+
+Mean brightness of the shadow region (same pixels both sides): **19.9 → 86.2**.
+
+That collapse is the reason colour lithophanes have a reputation for looking muddy. In
+a real print it does not read as black — three saturated filaments stacked over a
+neutral come out as a grey-brown veil over the whole picture. Pulling the grey back out
+is most of what makes the difference, and it uses noticeably less filament as a
+side effect.
+
+Reproduce it yourself: `py -3.11 tools/make_comparison.py your-photo.jpg`
+
+> To be precise about what this shows: it compares **this project's own two profiles**.
+> I have not decompiled anyone else's generator, so it is not a claim about what any
+> other tool does internally.
+
+
 Splitting RGB straight into CMY layers gives muddy, grey-veiled results. Two things fix
 that, and they are the heart of this project:
 
