@@ -280,7 +280,7 @@ async function meshObjectXml(id: number, name: string, m: XmlMesh): Promise<stri
 
 function projectSettings(shellHex: string, withShell: boolean): string {
   const slots = withShell ? 5 : 4;
-  const colours = [FILAMENT_HEX.C, FILAMENT_HEX.M, FILAMENT_HEX.Y, FILAMENT_HEX.W];
+  const colours: string[] = [FILAMENT_HEX.C, FILAMENT_HEX.M, FILAMENT_HEX.Y, FILAMENT_HEX.W];
   if (withShell) colours.push(shellHex.toUpperCase());
   const profile = "Bambu PLA Basic @BBL X1C";
   const rep = <T,>(v: T) => Array.from({ length: slots }, () => v);

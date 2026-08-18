@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>触光工坊 Touch &amp; Light · 把一个夏夜留成一盏灯</title>
+<meta name="description" content="上传一张照片，在你自己的浏览器里生成可打印的彩色透光灯箱。四色耗材逐层叠加，让光自己把颜色混出来。照片不上传，全程本地解算。" />
+<meta name="theme-color" content="#0C1224" />
+<meta property="og:title" content="触光工坊 Touch & Light" />
+<meta property="og:description" content="把一张照片变成会发光的记忆 —— 彩色透光灯箱生成器，全程在你的设备上运行。" />
+<meta property="og:image" content="/img/lit.webp" />
+<meta property="og:type" content="website" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=Karla:wght@400;500;700&family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/src/styles/site.css" />
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <a class="brand" href="/">
+    触光工坊<span>Touch &amp; Light</span>
+  </a>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-set-lang="zh-CN" aria-pressed="true">中</button>
+      <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+    </div>
+    <a class="btn btn-primary" href="/studio.html">
+      <span data-lang-zh>开始制作</span><span data-lang-en>Open studio</span>
+    </a>
+  </div>
+</nav>
+
+<header class="hero">
+  <canvas id="fireflies" aria-hidden="true"></canvas>
+  <div class="shell hero-grid">
+    <div>
+      <p class="label" data-lang-zh>彩色透光画 · 夏夜限定</p>
+      <p class="label" data-lang-en>Colour lithophane · made for summer nights</p>
+
+      <h1 data-lang-zh>把一个夏夜<br /><em>留成一盏灯</em></h1>
+      <h1 data-lang-en>Keep a summer night<br /><em>as a lamp</em></h1>
+
+      <p class="lede" data-lang-zh>
+        别人的光影画是灰的。青、品红、黄、白四色耗材一层层叠起来，让光自己把颜色混出来——
+        一张照片，变成 1.8 毫米厚、会发光的记忆。
+      </p>
+      <p class="lede" data-lang-en>
+        Most lithophanes come out grey. Stack cyan, magenta, yellow and white filament and let
+        the light do the mixing — a photograph becomes 1.8 millimetres of glowing memory.
+      </p>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/studio.html">
+          <span data-lang-zh>上传照片，开始制作</span><span data-lang-en>Upload a photo</span>
+        </a>
+        <a class="btn btn-ghost" href="#how">
+          <span data-lang-zh>先看看原理</span><span data-lang-en>How it works</span>
+        </a>
+      </div>
+
+      <p class="hero-note" data-lang-zh>全部解算在你自己的设备上完成，照片不会上传到任何地方</p>
+      <p class="hero-note" data-lang-en>Everything runs on your own device — your photo is never uploaded</p>
+    </div>
+
+    <figure class="hero-figure" data-reveal>
+      <img src="/img/lit.webp" alt="点亮的彩色透光灯箱" width="768" height="1024" fetchpriority="high" />
+      <figcaption>
+        <span data-lang-zh>实物拍摄 · 135mm · 四色 PLA</span>
+        <span data-lang-en>Actual print · 135mm · four-colour PLA</span>
+      </figcaption>
+    </figure>
+  </div>
+</header>
+
+<main>
+
+<section class="section" id="how">
+  <div class="shell">
+    <div class="section-head" data-reveal>
+      <p class="label" data-lang-zh>原理</p>
+      <p class="label" data-lang-en>How it works</p>
+      <h2 data-lang-zh>颜色不是印上去的，<br />是光穿过来的</h2>
+      <h2 data-lang-en>The colour isn't printed on.<br />It's what the light leaves behind.</h2>
+      <p class="lede" data-lang-zh>
+        每一个像素都有自己的一小摞耗材。背光从后面进来，穿过整摞，
+        每一层减掉自己那份光谱，从正面出来的就是颜色。
+      </p>
+      <p class="lede" data-lang-en>
+        Every pixel gets its own little tower of filament. Light enters from behind, passes
+        through the whole stack, each layer subtracts its part of the spectrum, and what
+        leaves the front is a colour.
+      </p>
+    </div>
+
+    <div class="stack">
+      <div class="stack-viz" data-reveal>
+        <div class="stack-bar" role="img" aria-label="从底到顶：白 4 层、黄 6 层、品红 6 层、青 6 层">
+          <div class="stack-seg seg-w">W · 4</div>
+          <div class="stack-seg seg-y">Y · ≤6</div>
+          <div class="stack-seg seg-m">M · ≤6</div>
+          <div class="stack-seg seg-c">C · ≤6</div>
+        </div>
+        <div class="stack-scale">
+          <span data-lang-zh>底 · 0.00mm</span><span data-lang-en>base · 0.00mm</span>
+          <span>最厚 22 层 ≈ 1.76mm</span>
+        </div>
+      </div>
+
+      <div data-reveal>
+        <p data-lang-zh>
+          白色打底把背光打匀；黄吸蓝、品红吸绿、青吸红。层高 0.08 毫米——
+          比一根头发还薄，整幅画的全部信息就装在这不到两毫米里。
+        </p>
+        <p data-lang-en>
+          White diffuses the backlight into an even ground; yellow absorbs blue, magenta
+          absorbs green, cyan absorbs red. At 0.08 mm per layer — thinner than a hair — the
+          entire image lives in under two millimetres of plastic.
+        </p>
+        <p style="margin-top:1.1rem" data-lang-zh>
+          难的地方在于三色重叠会变成灰。生成器把这份灰抽出来，
+          再按每个像素自己的亮度加回去一部分：暗处够沉，亮处干净。换张照片，它自己会重新平衡。
+        </p>
+        <p style="margin-top:1.1rem" data-lang-en>
+          The hard part is that where all three overlap you just get grey. The generator pulls
+          that grey out, then adds part of it back weighted by each pixel's own brightness —
+          shadows stay deep, highlights stay clean. Swap the photo and it rebalances itself.
+        </p>
+      </div>
+    </div>
+
+    <div class="facts" data-reveal>
+      <div class="fact"><div class="fact-v">0.08<small>mm</small></div><div class="fact-k"><span data-lang-zh>层高</span><span data-lang-en>layer height</span></div></div>
+      <div class="fact"><div class="fact-v">4<small>色</small></div><div class="fact-k"><span data-lang-zh>青 品红 黄 白</span><span data-lang-en>cyan magenta yellow white</span></div></div>
+      <div class="fact"><div class="fact-v">22<small>层</small></div><div class="fact-k"><span data-lang-zh>最厚处 ≈1.76mm</span><span data-lang-en>thickest stack ≈1.76mm</span></div></div>
+      <div class="fact"><div class="fact-v">0</div><div class="fact-k"><span data-lang-zh>照片上传数量</span><span data-lang-en>photos uploaded</span></div></div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule" />
+
+<section class="section">
+  <div class="shell">
+    <div class="section-head" data-reveal>
+      <p class="label" data-lang-zh>三步</p>
+      <p class="label" data-lang-en>Three steps</p>
+      <h2 data-lang-zh>从一张照片到一盏灯</h2>
+      <h2 data-lang-en>From a photo to a lamp</h2>
+    </div>
+  </div>
+  <div class="steps" data-reveal>
+    <div class="step">
+      <div class="step-n">01</div>
+      <h3><span data-lang-zh>选一张照片</span><span data-lang-en>Pick a photo</span></h3>
+      <p data-lang-zh>颜色饱和、明暗分明的效果最好。人像、插画、夕阳都很出彩。选好尺寸和外壳颜色。</p>
+      <p data-lang-en>Saturated colour and clear contrast work best — portraits, illustration, a sunset. Choose a size and a shell colour.</p>
+    </div>
+    <div class="step">
+      <div class="step-n">02</div>
+      <h3><span data-lang-zh>看点亮的样子</span><span data-lang-en>See it lit</span></h3>
+      <p data-lang-zh>浏览器当场算出透光后的效果，不满意就换一张。全程在你的设备上，不联网也能用。</p>
+      <p data-lang-en>Your browser simulates the backlit result on the spot. Try another if it isn't right — it all runs locally, even offline.</p>
+    </div>
+    <div class="step">
+      <div class="step-n">03</div>
+      <h3><span data-lang-zh>下载并打印</span><span data-lang-en>Download and print</span></h3>
+      <p data-lang-zh>拿到一个排好盘的 3MF：画片和外壳分两盘，AMS 槽位、层高、擦料塔都配好了，导入即可切片。</p>
+      <p data-lang-en>You get a ready-to-slice 3MF: two plates, AMS slots, layer height and prime tower already set up.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="gallery">
+  <div class="shell">
+    <div class="section-head" data-reveal>
+      <p class="label" data-lang-zh>实物</p>
+      <p class="label" data-lang-en>Actual prints</p>
+      <h2 data-lang-zh>打出来是什么样</h2>
+      <h2 data-lang-en>What comes off the plate</h2>
+      <p class="lede" data-lang-zh>都是真机打印、直接拍摄，没有渲染图。</p>
+      <p class="lede" data-lang-en>All real prints, photographed as they are. No renders.</p>
+    </div>
+
+    <div class="gallery" data-reveal>
+      <figure class="shot">
+        <img src="/img/lit.webp" alt="点亮的透光相册灯" loading="lazy" width="768" height="1024" />
+        <figcaption><span data-lang-zh>相册灯 · 夜里的样子</span><span data-lang-en>Album light, after dark</span></figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="/img/monalisa.webp" alt="蒙娜丽莎彩色透光画" loading="lazy" width="768" height="1024" />
+        <figcaption><span data-lang-zh>蒙娜丽莎 · 四色叠加</span><span data-lang-en>Mona Lisa, four-colour stack</span></figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="/img/handheld.webp" alt="手持彩色透光画" loading="lazy" width="768" height="1024" />
+        <figcaption><span data-lang-zh>1.76 毫米厚，握在手里</span><span data-lang-en>1.76mm thick, in the hand</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<hr class="rule" />
+
+<section class="section">
+  <div class="shell" style="text-align:center">
+    <div data-reveal>
+      <h2 style="font-size:var(--step-4);max-width:20ch;margin-inline:auto" data-lang-zh>今晚就可以开始打</h2>
+      <h2 style="font-size:var(--step-4);max-width:20ch;margin-inline:auto" data-lang-en>You could start printing tonight</h2>
+      <p class="lede" style="margin:1.4rem auto 2.2rem" data-lang-zh>免费，不用注册，不用装任何东西。</p>
+      <p class="lede" style="margin:1.4rem auto 2.2rem" data-lang-en>Free, no account, nothing to install.</p>
+      <a class="btn btn-primary" href="/studio.html">
+        <span data-lang-zh>打开制作台</span><span data-lang-en>Open the studio</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="shell">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="/">触光工坊<span>Touch &amp; Light</span></a>
+        <p style="margin-top:0.9rem;max-width:32ch" data-lang-zh>彩色透光灯箱生成器。为 Bambu Lab X1C + AMS 而做。</p>
+        <p style="margin-top:0.9rem;max-width:32ch" data-lang-en>A colour lithophane generator, built for the Bambu Lab X1C + AMS.</p>
+      </div>
+      <div>
+        <h4><span data-lang-zh>工具</span><span data-lang-en>Tool</span></h4>
+        <ul>
+          <li><a href="/studio.html"><span data-lang-zh>制作台</span><span data-lang-en>Studio</span></a></li>
+          <li><a href="#how"><span data-lang-zh>原理</span><span data-lang-en>How it works</span></a></li>
+          <li><a href="#gallery"><span data-lang-zh>实物</span><span data-lang-en>Gallery</span></a></li>
+        </ul>
+      </div>
+      <div>
+        <h4><span data-lang-zh>源码</span><span data-lang-en>Source</span></h4>
+        <ul>
+          <li><a href="https://github.com/2172711631-wq/CMYW_Studio" rel="noopener">GitHub</a></li>
+          <li><a href="https://github.com/2172711631-wq/CMYW_Studio/blob/main/docs/printing-guide.md" rel="noopener"><span data-lang-zh>打印指南</span><span data-lang-en>Printing guide</span></a></li>
+          <li><a href="https://github.com/2172711631-wq/CMYW_Studio/blob/main/docs/how-it-works.md" rel="noopener"><span data-lang-zh>原理详解</span><span data-lang-en>Technical write-up</span></a></li>
+        </ul>
+      </div>
+      <div>
+        <h4><span data-lang-zh>许可</span><span data-lang-en>Licence</span></h4>
+        <ul>
+          <li><span data-lang-zh>非商业使用免费</span><span data-lang-en>Free for noncommercial use</span></li>
+          <li><a href="https://github.com/2172711631-wq/CMYW_Studio/blob/main/NOTICE" rel="noopener"><span data-lang-zh>商业授权说明</span><span data-lang-en>Commercial licence</span></a></li>
+          <li><a href="mailto:2172711631@qq.com">2172711631@qq.com</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-base">
+      <span>© 2026 触光工坊 Touch &amp; Light · PolyForm Noncommercial 1.0.0</span>
+      <span data-lang-zh>照片始终留在你的设备上</span>
+      <span data-lang-en>Your photos stay on your device</span>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="/src/ui/site.ts"></script>
+</body>
+</html>
