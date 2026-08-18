@@ -155,8 +155,8 @@ site on it, bundling it into a product, or any use with a commercial application
 it.
 
 That last part isn't a "no" — commercial licences are available, and small operations
-are treated kindly. Open an issue titled **"Commercial licence"** and say what you have
-in mind. Full details in [NOTICE](NOTICE).
+are treated kindly. Email **2172711631@qq.com** with the subject "Commercial licence" and say what
+you have in mind. Full details in [NOTICE](NOTICE).
 
 Because it restricts commercial use, this is *source available*, not OSI open source.
 Everything is public, readable and forkable; the only line is making money from it.
