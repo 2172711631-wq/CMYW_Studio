@@ -108,7 +108,9 @@ a:hover { color: var(--glow-bright); }
   border-radius: 4px;
 }
 
-img { max-width: 100%; display: block; }
+/* height:auto 必须有：只设 width 时浏览器仍会用 HTML 的 height 属性，
+   图片会被纵向拉伸。宽高属性保留是为了避免加载前的布局跳动。 */
+img { max-width: 100%; height: auto; display: block; }
 
 .shell { width: var(--shell); margin-inline: auto; }
 
@@ -310,23 +312,19 @@ img { max-width: 100%; display: block; }
   flex: none;
 }
 
+/* 图片自带径向柔边，外面再套硬边卡片就成了"贴上去"的观感。
+   这里只留一层暖光衬底，让它像是在页面的夜色里发光。 */
 .hero-figure {
   position: relative;
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 40px 90px -40px rgba(0, 0, 0, 0.9),
-    0 0 90px -30px color-mix(in srgb, var(--glow) 45%, transparent);
+  filter: drop-shadow(0 24px 70px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 0 60px color-mix(in srgb, var(--glow) 32%, transparent));
 }
 .hero-figure img { width: 100%; }
 .hero-figure figcaption {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 2.4rem 1.2rem 1rem;
+  margin-top: 0.5rem;
+  text-align: center;
   font-size: 0.75rem;
-  color: var(--paper-dim);
-  background: linear-gradient(transparent, rgba(7, 11, 22, 0.88));
+  color: var(--paper-faint);
 }
 
 /* ---------------- 通用区块 ---------------- */
@@ -410,33 +408,25 @@ img { max-width: 100%; display: block; }
 }
 .shot {
   position: relative;
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--night-soft);
-  border: 1px solid var(--line-soft);
-  transition: transform 0.5s var(--ease), box-shadow 0.5s var(--ease), border-color 0.4s;
+  transition: transform 0.5s var(--ease), filter 0.5s var(--ease);
+  filter: drop-shadow(0 16px 44px rgba(0, 0, 0, 0.45));
 }
 .shot img {
   width: 100%;
-  height: auto;
-  aspect-ratio: var(--ar, 1);
-  object-fit: contain;
   transition: transform 0.7s var(--ease), filter 0.5s;
   filter: saturate(0.96);
 }
 .shot:hover {
-  transform: translateY(-4px);
-  border-color: color-mix(in srgb, var(--glow) 35%, var(--line));
-  box-shadow: 0 26px 60px -32px color-mix(in srgb, var(--glow) 55%, transparent);
+  transform: translateY(-5px);
+  filter: drop-shadow(0 22px 52px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 0 42px color-mix(in srgb, var(--glow) 34%, transparent));
 }
 .shot:hover img { transform: scale(1.035); filter: saturate(1.04); }
 .shot figcaption {
-  position: absolute;
-  inset: auto 0 0;
-  padding: 3rem 1rem 0.95rem;
+  margin-top: 0.25rem;
+  text-align: center;
   font-size: 0.8rem;
-  color: var(--paper-dim);
-  background: linear-gradient(transparent, rgba(7, 11, 22, 0.92));
+  color: var(--paper-faint);
 }
 
 /* ---------------- 步骤 ---------------- */
