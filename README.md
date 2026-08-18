@@ -7,7 +7,7 @@
 Turn any photo into a backlit 3D print — colour and all — by stacking cyan, magenta,
 yellow and white filament and letting light do the mixing.
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Licence: PolyForm Noncommercial](https://img.shields.io/badge/Licence-PolyForm_Noncommercial-orange.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Bambu Lab](https://img.shields.io/badge/Output-Bambu%203MF-00AE42.svg)](https://bambulab.com/)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -143,14 +143,26 @@ Ideas and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
-[GNU AGPL-3.0](LICENSE). Use it, change it, print with it, sell what you print.
+[PolyForm Noncommercial 1.0.0](LICENSE) — **free for anything that isn't making money.**
 
-The one obligation: if you run a **modified** version as a network service, you have to
-publish your changes. That keeps hosted forks honest and gives everyone the improvements
-back. The project name and logo are not covered by the licence — see [NOTICE](NOTICE).
+**Free, no permission needed:** printing for yourself, your family and your friends;
+hobby and amateur projects; personal study and research; teaching, schools and
+universities; charities and public institutions; publishing your own forks and
+improvements. Use it, change it, share it. You don't need to ask.
 
-*Earlier releases up to `v1.0.0` were published under MIT and remain available under
-those terms.*
+**Needs a commercial licence:** selling prints made with it, running a paid service or
+site on it, bundling it into a product, or any use with a commercial application behind
+it.
+
+That last part isn't a "no" — commercial licences are available, and small operations
+are treated kindly. Open an issue titled **"Commercial licence"** and say what you have
+in mind. Full details in [NOTICE](NOTICE).
+
+Because it restricts commercial use, this is *source available*, not OSI open source.
+Everything is public, readable and forkable; the only line is making money from it.
+
+*Releases up to `v1.0.0` were published under MIT and remain usable under those terms —
+that grant is not revoked.*
 
 ## Acknowledgements
 

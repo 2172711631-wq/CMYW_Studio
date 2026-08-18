@@ -1,42 +1,142 @@
-CMYW Studio
-Copyright (C) 2025-2026 2172711631-wq
+Required Notice: Copyright (C) 2025-2026 2172711631-wq — CMYW Studio
+                 https://github.com/2172711631-wq/CMYW_Studio
 
-This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU Affero General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option) any
-later version. See the LICENSE file for the full text.
+==========================================================================
+CMYW Studio — licence summary / 许可说明
+==========================================================================
+
+CMYW Studio is released under the PolyForm Noncommercial License 1.0.0.
+See the LICENSE file for the full, binding terms. This file is a plain
+summary and a statement of the commercial option — where the two differ,
+the LICENSE file governs.
+
+CMYW Studio 采用 PolyForm Noncommercial License 1.0.0 发布。完整且具有法律
+效力的条款见 LICENSE 文件。本文件只是通俗说明与商业授权说明；两者如有出入，
+以 LICENSE 文件为准。
+
+--------------------------------------------------------------------------
+Free, no permission needed / 免费，无需申请
+--------------------------------------------------------------------------
+
+You may use, copy, modify, and share CMYW Studio for any NONCOMMERCIAL
+purpose. That explicitly includes:
+
+  * printing for yourself, your family and your friends
+  * hobby projects, amateur pursuits, private entertainment
+  * personal study, research, experiment and testing
+  * teaching, and use by schools and universities
+  * use by charities, public research bodies, public health and safety
+    organisations, environmental organisations and government institutions
+  * publishing your changes, forks and improvements
+
+You do not need to ask, register, or tell anyone. Enjoy it.
+
+你可以出于任何**非商业**目的使用、复制、修改和分享 CMYW Studio，明确包括：
+
+  * 给自己、家人、朋友打印
+  * 业余爱好、个人项目、私人娱乐
+  * 个人学习、研究、实验与测试
+  * 教学，以及学校与高校的使用
+  * 慈善机构、公共研究机构、公共卫生与安全机构、环保组织、政府机构的使用
+  * 公开你的修改、分支与改进
+
+不需要申请，不需要登记，不需要告诉任何人。尽管用。
+
+--------------------------------------------------------------------------
+Needs a commercial licence / 需要商业授权
+--------------------------------------------------------------------------
+
+If you make money from it, you need a commercial licence. That includes,
+for example:
+
+  * selling prints, lightboxes or other objects produced with this software
+  * offering a paid service, website or app that uses it
+  * bundling it into a commercial product, or using it inside a business
+  * any use with an anticipated commercial application
+
+This is not a refusal. Commercial licences are available — the point of
+this licence is that the conversation happens, not that the answer is no.
+
+如果你要靠它赚钱，就需要一份商业授权。例如：
+
+  * 售卖用本软件生成的打印件、灯箱或其它成品
+  * 提供使用本软件的收费服务、网站或 App
+  * 将其打包进商业产品，或在公司经营中使用
+  * 任何带有商业预期的使用
+
+这不是拒绝。商业授权是可以买的——这个许可的意义在于「先谈一下」，
+而不是「一律不行」。
+
+--------------------------------------------------------------------------
+How to get one / 怎么获得商业授权
+--------------------------------------------------------------------------
+
+Open an issue titled "Commercial licence" at:
+
+    https://github.com/2172711631-wq/CMYW_Studio/issues
+
+Say roughly what you want to do and at what scale. Terms are worked out
+case by case; small operations are treated kindly.
+
+在下面的地址开一个标题为「Commercial licence」的 issue：
+
+    https://github.com/2172711631-wq/CMYW_Studio/issues
+
+大致说明你想做什么、规模多大。条款按情况一事一议，小本经营好商量。
+
+--------------------------------------------------------------------------
+Not open source, and that is deliberate / 这不是「开源」，且是有意为之
+--------------------------------------------------------------------------
+
+Because it restricts commercial use, this licence does not meet the Open
+Source Initiative's definition of open source, and CMYW Studio should be
+described as "source available" rather than "open source". The full source
+is public, readable, modifiable and forkable — the only restriction is
+making money from it.
+
+因为限制了商业用途，本许可不符合 OSI 的开源定义，CMYW Studio 应被描述为
+「源码公开（source available）」而非「开源」。完整源码是公开、可读、可改、
+可 fork 的，唯一的限制是拿它赚钱。
 
 --------------------------------------------------------------------------
 Licence history / 许可历史
 --------------------------------------------------------------------------
-Releases up to and including v1.0.0 were published under the MIT License.
-Those releases remain available under the MIT terms; that grant is not
-revoked by this change. Everything from the first AGPL-3.0 commit onward is
-licensed under AGPL-3.0.
 
-v1.0.0 及更早的发布采用 MIT 协议，那些版本仍可按 MIT 使用，本次变更不撤销
-已经给出的授权。自首个 AGPL-3.0 提交起的所有内容采用 AGPL-3.0。
+Releases up to and including v1.0.0 were published under the MIT License.
+That grant cannot be and is not revoked: those specific releases remain
+usable under MIT terms.
+
+One later commit briefly carried an AGPL-3.0 notice while the licensing
+was being settled. It was superseded the same day and no release was cut
+under it. The current terms above apply to the project as it now stands.
+
+v1.0.0 及更早的发布采用 MIT 协议。已经给出的授权无法撤销、也不撤销：
+那些特定版本仍可按 MIT 条款使用。
+
+中间有一个提交在许可方案确定过程中短暂标注过 AGPL-3.0，当天即被取代，
+且没有基于它发布任何版本。上述条款适用于当前的项目。
 
 --------------------------------------------------------------------------
 Trademarks / 商标
 --------------------------------------------------------------------------
-The name "CMYW Studio", the project logo, and any associated branding are NOT
-covered by the AGPL-3.0 licence. You may state that your work is "based on
-CMYW Studio", but you may not present a modified version as being the official
-CMYW Studio, nor use the name or logo to promote a fork in a way that suggests
-endorsement.
 
-「CMYW Studio」名称、项目标识及相关品牌元素不在 AGPL-3.0 授权范围内。你可以
-声明你的作品「基于 CMYW Studio」，但不得把修改版当作官方 CMYW Studio 发布，
-也不得以暗示官方背书的方式用该名称或标识推广分支。
+The name "CMYW Studio", the project logo and associated branding are NOT
+covered by the LICENSE. You may state that your work is "based on CMYW
+Studio", but you may not present a modified version as the official CMYW
+Studio, nor use the name or logo in a way that suggests endorsement.
+
+「CMYW Studio」名称、项目标识及相关品牌元素不在 LICENSE 授权范围内。你可以
+声明作品「基于 CMYW Studio」，但不得把修改版当作官方版本发布，也不得以暗示
+官方背书的方式使用该名称或标识。
 
 --------------------------------------------------------------------------
 Third-party / 第三方
 --------------------------------------------------------------------------
+
 "Bambu Lab", "Bambu Studio", "X1 Carbon" and "AMS" are trademarks of
 Shenzhen Tuozhu Technology Co., Ltd. This project is not affiliated with,
-endorsed by, or sponsored by Bambu Lab. Interoperability with the Bambu 3MF
-project format is implemented from the published format only.
+endorsed by, or sponsored by Bambu Lab. Interoperability with the Bambu
+3MF project format is implemented from the published format only.
 
-Sample images in docs/img/ are photographs of prints produced with this tool
-and are provided for documentation purposes.
+Sample images in docs/img/ are photographs of prints produced with this
+tool and are provided for documentation purposes.

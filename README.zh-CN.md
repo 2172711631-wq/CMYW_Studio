@@ -7,7 +7,7 @@
 把任意照片变成背光 3D 打印件——连颜色一起。青、品红、黄、白四色耗材逐层叠起来，
 让光自己把颜色混出来。
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Licence: PolyForm Noncommercial](https://img.shields.io/badge/许可-PolyForm_非商业-orange.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Bambu Lab](https://img.shields.io/badge/输出-Bambu%203MF-00AE42.svg)](https://bambulab.com/)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -132,12 +132,22 @@ docs/                   原理详解、打印指南
 
 ## 许可
 
-[GNU AGPL-3.0](LICENSE)。随便用、随便改、随便打印、打出来的东西随便卖。
+[PolyForm Noncommercial 1.0.0](LICENSE) —— **只要不拿它赚钱，随便用。**
 
-唯一的义务：如果你把**改动过**的版本作为网络服务运行，就得公开你的改动。
-这条让托管的分支保持诚实，也让所有改进能回流。项目名称和标识不在许可范围内，见 [NOTICE](NOTICE)。
+**免费，不用申请：** 给自己、家人、朋友打印；业余爱好与个人项目；个人学习与研究；
+教学、学校与高校；慈善机构与公共机构；公开你自己的分支和改进。
+用它、改它、分享它，都不需要问我。
 
-*`v1.0.0` 及更早的发布采用 MIT 协议，那些版本仍然可以按 MIT 使用。*
+**需要商业授权：** 售卖用它生成的打印件、拿它开收费服务或网站、
+把它打包进商业产品，或任何带商业预期的使用。
+
+最后这条不是「不行」——**商业授权是可以买的**，小本经营好商量。
+开一个标题为 **「Commercial licence」** 的 issue，说说你想做什么就行。详见 [NOTICE](NOTICE)。
+
+因为限制了商业用途，这属于**源码公开（source available）**，不是 OSI 定义的开源。
+所有代码都公开、可读、可 fork，唯一的红线是拿它赚钱。
+
+*`v1.0.0` 及更早的发布采用 MIT 协议，那些版本仍可按 MIT 使用——已给出的授权不撤销。*
 
 ## 致谢
 
