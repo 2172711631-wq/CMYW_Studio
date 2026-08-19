@@ -10,7 +10,7 @@
 [![Licence: PolyForm Noncommercial](https://img.shields.io/badge/许可-PolyForm_非商业-orange.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Bambu Lab](https://img.shields.io/badge/输出-Bambu%203MF-00AE42.svg)](https://bambulab.com/)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Issues welcome](https://img.shields.io/badge/Issues-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 [English](README.md) · [原理详解](docs/how-it-works.md) · [打印指南](docs/printing-guide.md)
 
@@ -45,9 +45,7 @@ CMYW Studio 把打印件当成一个**减色叠层**来做。每个像素都有�
 然后把所有东西打包成一个 Bambu Studio 的 `.3mf`，AMS 槽位和两个盘都已经排好。
 
 <div align="center">
-<img src="docs/img/sample-lit.webp" alt="点亮的彩色透光画" width="235">
-<img src="docs/img/sample-cool.webp" alt="冷色调的彩色透光画" width="235">
-<img src="docs/img/sample-handheld.webp" alt="手持彩色透光画" width="235">
+<img src="docs/img/sample-monalisa.webp" alt="蒙娜丽莎的彩色透光画" width="300">
 
 <sub>都是真机打印、直接拍摄，没有渲染图。</sub>
 </div>

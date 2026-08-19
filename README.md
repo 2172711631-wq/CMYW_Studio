@@ -10,7 +10,7 @@ yellow and white filament and letting light do the mixing.
 [![Licence: PolyForm Noncommercial](https://img.shields.io/badge/Licence-PolyForm_Noncommercial-orange.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Bambu Lab](https://img.shields.io/badge/Output-Bambu%203MF-00AE42.svg)](https://bambulab.com/)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Issues welcome](https://img.shields.io/badge/Issues-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ### [**→ Try it in your browser**](https://my-gpu-node.top/studio)
 
@@ -50,20 +50,21 @@ everything into a single Bambu Studio `.3mf` with the AMS slots and both build p
 already set up.
 
 <div align="center">
-<img src="docs/img/sample-lit.webp" alt="A colour lithophane lit from behind" width="235">
-<img src="docs/img/sample-cool.webp" alt="A colour lithophane in cool tones" width="235">
-<img src="docs/img/sample-handheld.webp" alt="A colour lithophane held in a hand" width="235">
+<img src="docs/img/sample-monalisa.webp" alt="A colour lithophane of the Mona Lisa, lit from behind" width="300">
 
-<sub>Real prints, photographed as they are. No renders.</sub>
+<sub>A real print, photographed as it is. No renders.<br>
+More samples coming — the gallery is being rebuilt with material we hold the rights to:
+public-domain paintings, original art, and AI-generated pieces.</sub>
 </div>
 
 ## Why it looks better than a naive CMY split
 
 ### See it
 
-Same photo, same optics, same simulation — only the separation differs. Left is the
+Same source, same optics, same simulation — only the separation differs. Left is the
 naive split this project shipped as its `v1` profile; right is `v2`, which is what you
-get today.
+get today. The source is this project's own CMYW test chart, so the comparison is a
+controlled target rather than a flattering photo.
 
 | Naive RGB → CMY split | Adaptive UCR + ordered dithering |
 |---|---|
@@ -78,7 +79,8 @@ neutral come out as a grey-brown veil over the whole picture. Pulling the grey b
 is most of what makes the difference, and it uses noticeably less filament as a
 side effect.
 
-Reproduce it yourself: `py -3.11 tools/make_comparison.py your-photo.jpg`
+Reproduce it yourself: `py -3.11 tools/make_comparison.py docs/img/color-chart.png`
+(or point it at any photo of your own)
 
 > To be precise about what this shows: it compares **this project's own two profiles**.
 > I have not decompiled anyone else's generator, so it is not a claim about what any
