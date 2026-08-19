@@ -249,3 +249,6 @@ node_modules/
 web/dist/
 web/.vite/
 *.tsbuildinfo
+
+# 标定工具的输出（本地生成，不入库）
+calibration/

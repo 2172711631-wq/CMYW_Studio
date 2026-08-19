@@ -12,7 +12,7 @@ export const LAYER_HEIGHT = 0.08;
 /** 白色底层数，固定。负责把背光打匀。 */
 export const MIN_WHITE_LAYERS = 4;
 
-/** 每层 0.08mm 贡献的光密度，实测值（拓竹 PLA Basic）。 */
+/** 每层 0.08mm 贡献的光密度，拓竹 PLA Basic 上的工作值（非仪器实测）。 */
 export const DENSITY_W = 0.11;
 export const DENSITY_C = 0.58;
 export const DENSITY_M = 0.5;
@@ -23,7 +23,7 @@ export const MAX_LAYERS_C = 6;
 export const MAX_LAYERS_M = 6;
 export const MAX_LAYERS_Y = 6;
 
-/** 影调曲线：不是物理，是对着实物打样调出来的。 */
+/** 影调曲线：不是物理，是按成品观感定的经验值。 */
 export const GAMMA_EXPONENT = 0.72;
 export const LINEAR_COEFFICIENT = 1.78;
 

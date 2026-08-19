@@ -13,7 +13,7 @@
 import { DENSITY_C, DENSITY_M, DENSITY_W, DENSITY_Y } from "./constants";
 import type { LayerSet } from "./separate";
 
-/** 相邻通道的轻微串扰，实测出来的，不加会显得过于干净不像实物。 */
+/** 相邻通道的轻微串扰，经验值，不加会显得过于干净不像实物。 */
 const CROSSTALK_RM = 0.04;
 const CROSSTALK_GY = 0.02;
 const CROSSTALK_BC = 0.03;

@@ -189,9 +189,10 @@ improvements. Use it, change it, share it. You don't need to ask.
 site on it, bundling it into a product, or any use with a commercial application behind
 it.
 
-That last part isn't a "no" — commercial licences are available, and small operations
-are treated kindly. Email **2172711631@qq.com** with the subject "Commercial licence" and say what
-you have in mind. Full details in [NOTICE](NOTICE).
+That last part isn't a "no". Commercial permission is arranged case by case — formal
+licence tiers are not on sale yet while the terms are still being worked out. Email
+**2172711631@qq.com** with the subject "Commercial licence" and say what you have in
+mind. Scope and boundaries in [COMMERCIAL.md](COMMERCIAL.md).
 
 Because it restricts commercial use, this is *source available*, not OSI open source.
 Everything is public, readable and forkable; the only line is making money from it.
@@ -201,9 +202,11 @@ that grant is not revoked.*
 
 ## Acknowledgements
 
-Built for the Bambu Lab X1C + AMS. The optical constants come from a long, expensive
-stack of test prints; if you re-derive better ones for your own filament, please open a
-PR with your measurements.
+Built for the Bambu Lab X1C + AMS. The optical constants are working values for Bambu
+PLA Basic — not instrument measurements, just numbers that held up across a lot of
+printed images. If you derive better ones for your own filament,
+`tools/make_wedge.py` and `tools/measure_wedge.py` will do the fitting for you; please
+share what you get.
 
 <div align="center">
 <br>

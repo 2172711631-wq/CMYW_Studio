@@ -18,7 +18,7 @@ decide for you, and the mistakes that cost the most filament.
 
 **Use PLA.** PETG and ABS are more translucent than PLA and wash the colours out; the
 density constants assume PLA. Silk and matte variants change transmission noticeably —
-Basic is what the numbers were measured on.
+Basic is what the numbers were chosen for.
 
 ## Loading the AMS
 

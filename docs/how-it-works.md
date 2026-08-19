@@ -24,8 +24,8 @@ density  e = −ln(T)          T = transmittance, 0…1
 Densities add. Two layers of cyan absorb exactly twice the density of one. That single
 property is why the whole pipeline works in density instead of in RGB.
 
-Each filament gets one measured constant — the density it contributes *per 0.08 mm
-layer*, in the channel it absorbs:
+Each filament gets one constant — the density it contributes *per 0.08 mm layer*,
+in the channel it absorbs:
 
 | Filament | Absorbs | Density per layer | Max layers |
 |----------|---------|-------------------|------------|
@@ -34,9 +34,11 @@ layer*, in the channel it absorbs:
 | Magenta | green | `0.50` | 6 |
 | Yellow | blue | `0.68` | 6 |
 
-These came from printing wedges of 0–6 layers of each filament, lighting them from
-behind and measuring. They are specific to Bambu PLA Basic — if you use different
-filament, [re-derive them](#calibrating-for-your-own-filament).
+These are working values for Bambu PLA Basic. They are **not instrument
+measurements** — they are starting values that were kept because printed results
+tracked the source closely across a wide range of images, including saturated
+colour charts. If you use different filament,
+[derive your own](#calibrating-for-your-own-filament).
 
 ## 2. Pixel → target density
 
@@ -189,13 +191,30 @@ if you would rather drive it from UG/NX.
 
 The four density constants are the only filament-specific values. To re-derive them:
 
-1. Print a wedge: 0, 1, 2, 3, 4, 5, 6 layers of one filament at 0.08 mm, over the
-   standard 4-layer white base.
+There is a tool for this — you do not have to build the target yourself:
+
+```bash
+py -3.11 tools/make_wedge.py          # writes calibration/密度阶梯标定片.3mf
+```
+
+That plate is 120 × 160 mm and drops straight into the standard lightbox. Rows 1–2 are
+white at 4/6/8/10/12/16/20/24 layers; rows 3–4 are the 4-layer white base plus 0–6
+layers of C, M and Y together.
+
+1. Print it at 0.08 mm, slots 1=Cyan 2=Magenta 3=Yellow 4=White.
 2. Light it from behind with the panel you will actually use.
-3. Photograph it flat, in raw, with fixed exposure and no auto white balance.
-4. For each step, read the mean linear value of the channel that filament absorbs, and
-   convert to density: `e = −ln(value)`.
-5. Fit a straight line through the steps. The slope is your density per layer.
+3. Photograph it flat — **flash off, HDR off, exposure locked**; raw is better. Crop to
+   the plate edges and save as `calibration/wedge_photo.jpg`.
+4. Run the fit:
+
+```bash
+py -3.11 tools/measure_wedge.py calibration/wedge_photo.jpg
+```
+
+It linearises the photo, samples each patch, fits `e = −ln(T)` against layer count, and
+prints your four densities next to the current defaults. It also subtracts the known
+channel cross-talk, so the numbers come out comparable. The script round-trips its own
+synthetic render to within 0.008, so the method is sound — what it needs is your photo.
 
 Then set it via environment variable — no code edit needed:
 
@@ -203,9 +222,11 @@ Then set it via environment variable — no code edit needed:
 FDM_COLOR_PROFILE=v2 python cli.py photo.jpg
 ```
 
-Density constants currently require editing `main.py` directly; making them a
-configuration file is on the roadmap. If you produce a good set for a common filament,
-a PR with your measurements would be very welcome.
+Density constants currently require editing `main.py` (and `web/src/engine/constants.ts`
+for the browser build) directly; making them a configuration file is on the roadmap.
+If you derive a good set for a common filament, please open an issue with your numbers
+and a photo of the wedge — see [CONTRIBUTING.md](../CONTRIBUTING.md) for why issues
+rather than pull requests.
 
 ## Tunable constants
 
@@ -240,7 +261,7 @@ a PR with your measurements would be very welcome.
 
 密度可以相加。两层青正好是一层青的两倍密度。整条管线在密度里而不是在 RGB 里工作，就是因为这一条性质。
 
-每种耗材有一个实测常数——**每 0.08mm 一层**在它所吸收的通道里贡献的密度：
+每种耗材有一个常数——**每 0.08mm 一层**在它所吸收的通道里贡献的密度：
 
 | 耗材 | 吸收 | 每层密度 | 最大层数 |
 |---|---|---|---|
@@ -249,8 +270,9 @@ a PR with your measurements would be very welcome.
 | 品红 | 绿 | `0.50` | 6 |
 | 黄 | 蓝 | `0.68` | 6 |
 
-这些值是打了 0–6 层的楔形块、背光实测出来的，只对拓竹 PLA Basic 成立。
-换耗材请[重新标定](#给自己的耗材做标定)。
+这些是拓竹 PLA Basic 上的工作值。**不是仪器测量结果**——它们是一组起始值，
+因为在各类图片（包括高饱和色卡）上打印成品与原图的还原度都很高而被保留下来。
+换耗材请[自己推一套](#给自己的耗材做标定)。
 
 ## 2. 像素 → 目标密度
 
@@ -262,7 +284,7 @@ e = (−ln(rgb)) ** 0.72 * 1.78
 ```
 
 指数 `0.72` 和系数 `1.78` 不是物理，是**影调曲线**。原始的 `−ln(T)` 会把中间调压得太暗，
-因为灯箱是在明亮环境里看的，而且人眼亮度感知是非线性的。这两个数是对着实物打样一点点调出来的。
+因为灯箱是在明亮环境里看的，而且人眼亮度感知是非线性的。这两个数同样是经验值，按成品观感定的，没有物理依据。
 
 输入先钳到最小 `0.004`，因为 `ln(0)` 是无穷大，一个纯黑像素会要求无限多的塑料。
 
@@ -376,14 +398,33 @@ z_青   = l_白 + l_黄 + l_品红
 
 四个密度常数是唯一和耗材相关的值。重新标定的方法：
 
-1. 打一个楔形块：某种耗材 0、1、2、3、4、5、6 层，层高 0.08mm，都压在标准的 4 层白底上。
-2. 用你实际要用的灯板从背后打光。
-3. 正面平拍，用 RAW，固定曝光，关掉自动白平衡。
-4. 每一档读出该耗材所吸收通道的线性均值，换算成密度：`e = −ln(值)`。
-5. 对各档做直线拟合，斜率就是每层密度。
+有现成工具，标定片不用自己拼：
 
-密度常数目前需要直接改 `main.py`；把它们做成配置文件在路线图里。
-如果你为某种常见耗材标出了好用的一组，**非常欢迎带上测量数据提 PR**。
+```bash
+py -3.11 tools/make_wedge.py          # 生成 calibration/密度阶梯标定片.3mf
+```
+
+这片 120 × 160 mm，直接进标准灯箱。第 1–2 行是纯白 4/6/8/10/12/16/20/24 层，
+第 3–4 行是 4 层白底加 C/M/Y 各 0–6 层。
+
+1. 0.08mm 层高打印，槽位 1=青 2=品红 3=黄 4=白。
+2. 用你实际要用的灯板从背后打光。
+3. 正面平拍——**关闪光、关 HDR、锁定曝光**，能拍 RAW 更好。
+   裁到只剩画片，存成 `calibration/wedge_photo.jpg`。
+4. 跑拟合：
+
+```bash
+py -3.11 tools/measure_wedge.py calibration/wedge_photo.jpg
+```
+
+脚本会把照片转成线性光、采样每一格、对层数拟合 `e = −ln(T)`，
+把你的四个密度和当前默认值并排打出来，并扣掉已知的通道串扰让数值可比。
+它用自己的合成渲染自检过，误差在 0.008 以内——方法是通的，缺的只是你那张照片。
+
+密度常数目前需要直接改 `main.py`（网页版还要改 `web/src/engine/constants.ts`）；
+做成配置文件在路线图里。如果你为某种常见耗材推出了好用的一组，
+**欢迎开 issue 附上数值和标定片照片** —— 为什么是 issue 而不是 PR，见
+[CONTRIBUTING.md](../CONTRIBUTING.md)。
 
 ## 可调常数
 

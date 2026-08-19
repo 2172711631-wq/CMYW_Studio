@@ -7,10 +7,13 @@ both welcome, and you do not need to ask permission before opening either.
 
 ## Good first contributions
 
-- **Filament calibration data.** The density constants are measured for Bambu PLA Basic
-  only. If you measure a set for another filament, that is the single most useful thing
-  you can contribute — see [docs/how-it-works.md](docs/how-it-works.md#calibrating-for-your-own-filament)
-  for the procedure. Include your measurements and photos of the test wedge.
+- **Filament calibration data.** The density constants are working values for Bambu PLA
+  Basic — they are not instrument measurements, just numbers that hold up well in print.
+  If you derive a set for another filament, that is the single most useful thing you can
+  contribute. Run `py -3.11 tools/make_wedge.py`, print the plate, photograph it backlit
+  and run `tools/measure_wedge.py` — full procedure in
+  [docs/how-it-works.md](docs/how-it-works.md#calibrating-for-your-own-filament).
+  Include your numbers and a photo of the wedge.
 - **Printer support.** Output is currently a Bambu project 3MF. A plain 3MF or
   per-colour STL exporter would open this up to Prusa MMU, ERCF and others.
 - **Sample prints.** Photos of what you made, especially of failures, help everyone
@@ -31,14 +34,17 @@ Include:
 - Python 3.11 (CadQuery does not support 3.12+ yet)
 - Match the surrounding style; the codebase uses type hints and short Chinese comments
   for the domain-specific parts
-- Keep the optical constants in `main.py` — they are the calibrated core, and scattering
-  them makes results irreproducible
+- Keep the optical constants in `main.py` — they are the tuned core, and scattering them
+  makes results irreproducible
 - If you change anything in the separation path, say what you compared against. "Looks
   better" needs a before/after on the same source image
 
-There is no test suite yet. Adding one is on the roadmap and would be very welcome —
-sensible starting points are the layer histogram for a fixed test image, and the shell's
-outer dimensions and watertightness.
+The browser engine has a test suite (`cd web && npm run verify` — type-check plus
+vitest). It pins the Python and TypeScript separation to pixel-for-pixel parity against
+fixtures, so **if you touch the separation path, regenerate them with
+`py -3.11 tools/make_fixtures.py` and re-run `npm run verify`**. Two porting traps that
+cause silent drift rather than a crash: NumPy rounds half-to-even, and the Python side
+is float32 throughout. The Python CLI has no tests yet; adding them is on the roadmap.
 
 ## Licence and contributor terms
 
