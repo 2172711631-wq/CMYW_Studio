@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """量印好的密度阶梯片：一张背光照片 → 四个耗材的每层光学密度。
 
 用法：
@@ -9,12 +8,17 @@
 
 输出：拟合出的 DENSITY_W / C / M / Y，和现在 main.py 里的常数对比。
 """
-import os, sys, io
+import io
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-import numpy as np, cv2
+import cv2
+import numpy as np
+
 import main as M
-from make_wedge import TOP, BOT
+from make_wedge import BOT, TOP
 
 GW, WMM, HMM = 300, 120.0, 160.0           # 与 make_wedge 的默认一致
 COLS = ROWS = 4
@@ -65,10 +69,10 @@ def main(path):
 
     print(f"照片 {w}×{h}\n")
     print("第 1–2 行 纯白阶梯      白层   R      G      B")
-    for n, v in zip(TOP, vals[:8]):
+    for n, v in zip(TOP, vals[:8], strict=True):
         print(f"                        {n:>3}  {v[0]:.4f} {v[1]:.4f} {v[2]:.4f}")
     print("\n第 3–4 行 CMY 阶梯     CMY层   R      G      B")
-    for k, v in zip(BOT, vals[8:]):
+    for k, v in zip(BOT, vals[8:], strict=True):
         print(f"                        {k:>3}  {v[0]:.4f} {v[1]:.4f} {v[2]:.4f}")
 
     # 白：三通道一起拟（白是中性的，三条曲线斜率应当一致）

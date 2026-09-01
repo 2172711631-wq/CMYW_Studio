@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """密度阶梯标定片：直接量 DENSITY_W 与 CMY 三联的中性密度。
 
 第 1–2 行 = 纯白色 N 层（N = 4,6,8,10,12,16,20,24）
@@ -7,10 +6,15 @@
 打出来背光拍一张，量每格亮度 → 取 ln，斜率就是每层的光学密度。
 这一个数决定「白色能不能当 K 通道」。
 """
-import os, sys, io
+import io
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-import numpy as np, cv2
+import cv2
+import numpy as np
+
 import main as M
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "calibration")
@@ -26,7 +30,9 @@ def build(width_mm=120.0, height_mm=160.0):
     cols, rows, gap = 4, 4, 4
     cell = (gw - gap * (cols + 1)) // cols
     rowh = (gh - gap * (rows + 1)) // rows
-    z = lambda: np.zeros((gh, gw), np.int32)
+    def z():
+        return np.zeros((gh, gw), np.int32)
+
     w, c, m, y = z(), z(), z(), z()
     w[:] = 4                                # 整片底白 4 层，保证连成一片
 

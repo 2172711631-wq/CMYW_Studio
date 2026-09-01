@@ -13,3 +13,5 @@ ignore = [
 "main.py" = ["E402", "I001"]
 "modifier.py" = ["E402"]
 "cli.py" = ["E402"]
+# tools/ 的脚本要先把仓库根塞进 sys.path 才 import 得到 main，导入顺序同样承重
+"tools/*.py" = ["E402", "I001"]
