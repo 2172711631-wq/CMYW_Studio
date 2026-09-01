@@ -208,71 +208,83 @@ interface HoledFace {
 }
 
 /**
- * 在 +X 侧壁上开一个矩形通孔，并补上孔壁。
+ * 在 +X 侧壁上开一个通孔，并补上孔壁。
  *
- * 孔从外框右面贯穿到内腔右面。为了不破坏侧壁的三角形带，做法是把孔所在的
- * 那一整段侧壁替换成「带矩形洞的墙面」：用四块矩形（下/上/左/右）围出洞口，
- * 再补四片孔壁把内外两个洞口连起来。
+ * 洞口用任意闭合折线给出（Type-C 是圆角矩形），从外框右面贯穿到内腔右面。
+ * 为了不破坏侧壁的三角形带，做法是把孔所在的那一整段侧壁替换成「带洞的墙面」，
+ * 再补一圈孔壁把内外两个洞口连起来。
  *
  * 注意外框面与内腔面的 Y、Z 跨度不同（外框整高 0→depth，内腔只有 wall→slotZ），
  * 混用会留下未配平的边，也就是网格上的洞。
+ *
+ * hole 必须是 roundedRect 的输出（在 (y, z) 平面上、逆时针、四段等长圆弧），
+ * 下面按段索引把洞口分给四个墙角，靠的就是这个排列。
  */
 function punchSideHole(
   mb: MeshBuilder,
   outerFace: HoledFace,
   innerFace: HoledFace,
-  holeYLo: number,
-  holeYHi: number,
-  holeZLo: number,
-  holeZHi: number,
+  hole: Pt[],
 ): void {
   const V = (x: number, y: number, z: number) => mb.addVertex(x, y, z);
+  const n = hole.length;
+  const arcLen = ARC_SEGMENTS + 1;
 
   /**
-   * 把「带矩形洞的矩形墙面」三角化成一个四边形环。
+   * 墙角 c 负责的洞口折线从哪个顶点开始。
+   *
+   * roundedRect 的四段圆弧依次贴着 (yHi,zLo) → (yHi,zHi) → (yLo,zHi) → (yLo,zLo)，
+   * 而墙角按 (yLo,zLo) → (yHi,zLo) → (yHi,zHi) → (yLo,zHi) 编号，故第 a 段对应墙角 (a+1)%4。
+   * 每段链条 = 前一段圆弧的末点（直边起点）→ 本段圆弧末点，四条链首尾相接铺满洞口一周。
+   */
+  const chainStart = (c: number) => ((((c + 3) % 4) * arcLen - 1) + n) % n;
+
+  /**
+   * 把「带洞的矩形墙面」三角化。
    *
    * 关键约束：补丁的**外边界只能用四个角点**。若在外边界上插入额外顶点
    * （例如按 3×3 网格切），相邻的底面盖板与角部侧壁仍然只有一条长边，
    * 就会形成 T 型接点——非流形，切片器当破面处理。
    *
-   * 环形连接只在内部产生新边，外边界保持四条整边，因此与邻面天然对齐。
+   * 因此每个墙角向它那一段洞口折线扇形铺开，再用一片过渡三角形跨过墙边，
+   * 新增的边全在内部，外边界保持四条整边。洞口凸、且整体落在墙面内部，
+   * 墙角对本段折线全可见，扇形不会自交。
    */
   const buildFace = (f: HoledFace) => {
     // (y,z) 按 (lo,lo)→(hi,lo)→(hi,hi)→(lo,hi) 绕序，在 x=常数 面上给出 +X 法线
-    const outerRing: Array<[number, number]> = [
+    const cornerRing: Array<[number, number]> = [
       [f.yLo, f.zLo],
       [f.yHi, f.zLo],
       [f.yHi, f.zHi],
       [f.yLo, f.zHi],
     ];
-    const holeRing: Array<[number, number]> = [
-      [holeYLo, holeZLo],
-      [holeYHi, holeZLo],
-      [holeYHi, holeZHi],
-      [holeYLo, holeZHi],
-    ];
-    const o = outerRing.map(([y, z]) => V(f.x, y, z));
-    const h = holeRing.map(([y, z]) => V(f.x, y, z));
-    for (let i = 0; i < 4; i += 1) {
-      const j = (i + 1) % 4;
-      if (f.facePlusX) mb.addQuad(o[i], o[j], h[j], h[i]);
-      else mb.addQuad(o[i], h[i], h[j], o[j]);
+    const o = cornerRing.map(([y, z]) => V(f.x, y, z));
+    const h = hole.map(([y, z]) => V(f.x, y, z));
+    const tri = (a: number, b: number, c: number) => {
+      if (f.facePlusX) mb.addTriangle(a, b, c);
+      else mb.addTriangle(a, c, b);
+    };
+    for (let c = 0; c < 4; c += 1) {
+      const next = (c + 1) % 4;
+      const end = chainStart(next);
+      for (let k = chainStart(c); k !== end; k = (k + 1) % n) {
+        tri(o[c], h[(k + 1) % n], h[k]);
+      }
+      tri(o[c], o[next], h[end]);
     }
   };
 
   buildFace(outerFace);
   buildFace(innerFace);
 
-  // 孔壁：四片矩形连接内外洞口，法线朝向孔内
+  // 孔壁：沿洞口一圈连接内外洞口，法线朝向孔内
   const xo = outerFace.x;
   const xi = innerFace.x;
-  const tube = (ay: number, az: number, by: number, bz: number) => {
+  for (let k = 0; k < n; k += 1) {
+    const [ay, az] = hole[k];
+    const [by, bz] = hole[(k + 1) % n];
     mb.addQuad(V(xo, ay, az), V(xo, by, bz), V(xi, by, bz), V(xi, ay, az));
-  };
-  tube(holeYLo, holeZLo, holeYHi, holeZLo); // 底
-  tube(holeYHi, holeZLo, holeYHi, holeZHi); // 右
-  tube(holeYHi, holeZHi, holeYLo, holeZHi); // 顶
-  tube(holeYLo, holeZHi, holeYLo, holeZLo); // 左
+  }
 }
 
 /**
@@ -335,8 +347,10 @@ export function buildShellMesh(params: ShellParams): Mesh {
   usbCz = clamp(usbCz, minCz, maxCz);
   const usbZLo = usbCz - USB.h / 2;
   const usbZHi = usbCz + USB.h / 2;
-  const usbYLo = usbCy - USB.w / 2;
-  const usbYHi = usbCy + USB.w / 2;
+  // 洞口是圆角矩形（R1.65，上下边几乎贴成半圆），与 Type-C 插头轮廓、以及
+  // CadQuery 母本 cut_type_c_hole() 的 fillet 一致。切成直角方口插头虽然塞得进，
+  // 但四角会各露一块空隙，插头也不再被孔壁扶正——外观和手感都是坏的。
+  const usbHole = roundedRect(usbCy, usbCz, USB.w, USB.h, USB.r);
 
   // 孔所在的 Z 区间完全落在侧壁段（wall → slotZ）内，因此只需在这一段开洞
   const holeInWallZone = usbZLo > p.wall + 1e-6 && usbZHi < slotZ - 1e-6;
@@ -375,10 +389,7 @@ export function buildShellMesh(params: ShellParams): Mesh {
         zHi: slotZ,
         facePlusX: false,
       },
-      usbYLo,
-      usbYHi,
-      usbZLo,
-      usbZHi,
+      usbHole,
     );
   }
 
