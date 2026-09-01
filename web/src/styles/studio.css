@@ -11,7 +11,7 @@
 .studio-head h1 { font-size: var(--step-3); margin: 0.9rem 0 1rem; }
 .studio-privacy {
   font-size: var(--step--1);
-  color: var(--paper-dim);
+  color: var(--ink-dim);
   display: flex;
   gap: 0.55rem;
   align-items: flex-start;
@@ -24,7 +24,7 @@
   border-radius: 50%;
   margin-top: 0.62rem;
   background: var(--moon);
-  box-shadow: 0 0 10px var(--moon);
+  box-shadow: 0 0 10px var(--moon-halo);
 }
 
 .studio-grid {
@@ -38,7 +38,7 @@
 }
 
 .panel {
-  background: color-mix(in srgb, var(--night-soft) 72%, transparent);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
   padding: clamp(1.1rem, 2.5vw, 1.6rem);
@@ -55,19 +55,19 @@
   padding: 1.9rem 1.1rem;
   text-align: center;
   cursor: pointer;
-  color: var(--paper-dim);
+  color: var(--ink-dim);
   transition: border-color 0.2s, background 0.2s, color 0.2s;
 }
 .drop:hover,
 .drop[data-over="true"] {
   border-color: var(--glow);
   background: color-mix(in srgb, var(--glow) 7%, transparent);
-  color: var(--paper);
+  color: var(--ink);
 }
 .drop-inner { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
 .drop-inner svg { color: var(--glow); }
-.drop-inner strong { font-size: var(--step--1); font-weight: 700; color: var(--paper); }
-.drop-inner small { font-size: 0.75rem; color: var(--paper-faint); }
+.drop-inner strong { font-size: var(--step--1); font-weight: 700; color: var(--ink); }
+.drop-inner small { font-size: 0.75rem; color: var(--ink-faint); }
 
 /* ---------------- 字段 ---------------- */
 .field { display: flex; flex-direction: column; gap: 0.55rem; }
@@ -80,7 +80,7 @@
   font-weight: 700;
 }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--glow); font-size: 0.8125rem; }
-.hint { font-size: 0.75rem; color: var(--paper-faint); line-height: 1.55; }
+.hint { font-size: 0.75rem; color: var(--ink-faint); line-height: 1.55; }
 
 input[type="range"] {
   appearance: none;
@@ -123,7 +123,7 @@ input[type="range"]::-moz-range-thumb {
   top: 3px; left: 3px;
   width: 16px; height: 16px;
   border-radius: 50%;
-  background: var(--paper);
+  background: var(--ink);
   transition: transform 0.22s var(--ease);
 }
 .switch input:checked + span { background: var(--glow); }
@@ -137,7 +137,7 @@ input[type="range"]::-moz-range-thumb {
   width: 30px; height: 30px;
   border-radius: 50%;
   border: 2px solid transparent;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px var(--inset-hair);
   cursor: pointer;
   padding: 0;
   transition: transform 0.15s var(--ease), border-color 0.2s;
@@ -151,13 +151,13 @@ input[type="range"]::-moz-range-thumb {
 .progress { display: flex; flex-direction: column; gap: 0.5rem; }
 .progress-bar { height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .progress-bar i { display: block; height: 100%; width: 0; background: var(--glow); transition: width 0.25s var(--ease); }
-#progressText { color: var(--paper-dim); font-size: 0.75rem; }
+#progressText { color: var(--ink-dim); font-size: 0.75rem; }
 
 .err {
   font-size: var(--step--1);
-  color: #ffb4b4;
-  background: color-mix(in srgb, #ff6b6b 12%, transparent);
-  border: 1px solid color-mix(in srgb, #ff6b6b 32%, transparent);
+  color: var(--danger-ink);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
   border-radius: 8px;
   padding: 0.7rem 0.9rem;
 }
@@ -174,7 +174,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 2px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--night-deep) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-deep) 60%, transparent);
 }
 .view-switch button {
   appearance: none;
@@ -185,14 +185,14 @@ input[type="range"]::-moz-range-thumb {
   font: inherit;
   font-size: var(--step--1);
   letter-spacing: 0.04em;
-  color: var(--paper-dim);
+  color: var(--ink-dim);
   background: transparent;
   transition: background 0.18s ease, color 0.18s ease;
 }
-.view-switch button:hover { color: var(--paper); }
+.view-switch button:hover { color: var(--ink); }
 .view-switch button[aria-pressed="true"] {
-  color: var(--night-deep);
-  background: var(--glow-bright);
+  color: var(--bg-deep);
+  background: var(--glow-strong);
 }
 
 #view3d {
@@ -216,8 +216,8 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 999px;
   font-size: 0.72rem;
   letter-spacing: 0.05em;
-  color: var(--paper-faint);
-  background: color-mix(in srgb, var(--night-deep) 70%, transparent);
+  color: var(--stage-ink);
+  background: color-mix(in srgb, var(--stage) 70%, transparent);
   pointer-events: none;
   white-space: nowrap;
 }
@@ -228,18 +228,19 @@ input[type="range"]::-moz-range-thumb {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  /* 深一档的底，模拟暗房，让预览的透光色更可信 */
+  /* 暗房，两套主题里都不变：背光透出来的颜色衬在浅底上会当场失真，
+     而这一块正是整个工具要人看准的东西。 */
   background:
-    radial-gradient(60% 60% at 50% 45%, #10182c 0%, var(--night-deep) 70%);
+    radial-gradient(60% 60% at 50% 45%, var(--stage-core) 0%, var(--stage) 70%);
   overflow: hidden;
 }
-.preview-empty { text-align: center; color: var(--paper-faint); font-size: var(--step--1); line-height: 1.8; padding: 2rem; }
+.preview-empty { text-align: center; color: var(--stage-ink); font-size: var(--step--1); line-height: 1.8; padding: 2rem; }
 #preview {
   max-width: 100%;
   max-height: 62vh;
   border-radius: 6px;
   /* 预览本身就是"点亮"的，给它一圈真实的光溢出 */
-  box-shadow: 0 0 70px -10px color-mix(in srgb, var(--glow) 45%, transparent),
+  box-shadow: 0 0 70px -10px color-mix(in srgb, var(--glow-air) 45%, transparent),
     0 18px 50px -20px rgba(0, 0, 0, 0.8);
   image-rendering: auto;
 }
@@ -254,8 +255,8 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 10px;
   overflow: hidden;
 }
-.stats > div { background: var(--night); padding: 0.7rem 0.85rem; }
-.stats dt { font-size: 0.7rem; color: var(--paper-faint); }
+.stats > div { background: var(--bg); padding: 0.7rem 0.85rem; }
+.stats dt { font-size: 0.7rem; color: var(--ink-faint); }
 .stats dd { margin: 0.15rem 0 0; font-size: 0.95rem; }
 
 .done {

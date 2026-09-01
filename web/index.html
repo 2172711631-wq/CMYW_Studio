@@ -16,6 +16,19 @@
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="canonical" href="https://my-gpu-node.top/" />
+<script>
+  /* 主题要在第一次绘制之前定下来 —— 模块脚本是 defer 的，等它跑起来
+     页面已经按夜色画过一帧，切换会闪一下白。这一小段因此必须内联在 head。
+     没自己选过就跟着系统走；选过就以选的为准。 */
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem("tl-theme"); } catch (e) {}
+    var day = saved ? saved === "day" : matchMedia("(prefers-color-scheme: light)").matches;
+    if (day) document.documentElement.dataset.theme = "day";
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = day ? "#F7F2E8" : "#161E36";
+  })();
+</script>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -25,7 +38,7 @@
 </head>
 <body>
 
-<!-- 夜色氛围层：整页一张，固定在内容后面。见 src/ui/atmosphere.ts -->
+<!-- 氛围层：整页一张，固定在内容后面，昼夜各一套调色板。见 src/ui/atmosphere.ts -->
 <canvas class="atmosphere" aria-hidden="true"></canvas>
 
 <nav class="nav" id="nav">
@@ -33,6 +46,17 @@
     触光工坊<span>Touch &amp; Light</span>
   </a>
   <div class="nav-right">
+    <button type="button" class="theme-toggle" data-toggle-theme aria-pressed="false">
+      <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20.2 14.8A8.6 8.6 0 0 1 9.2 3.8a8.6 8.6 0 1 0 11 11Z" />
+      </svg>
+      <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.1" />
+        <path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6" />
+      </svg>
+      <span class="sr-only" data-lang-zh>日间模式</span>
+      <span class="sr-only" data-lang-en>Daylight mode</span>
+    </button>
     <div class="lang" role="group" aria-label="Language">
       <button type="button" data-set-lang="zh-CN" aria-pressed="true">中</button>
       <button type="button" data-set-lang="en" aria-pressed="false">EN</button>

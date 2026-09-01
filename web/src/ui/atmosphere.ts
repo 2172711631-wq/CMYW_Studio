@@ -1,6 +1,10 @@
 /**
- * 夜色氛围层 —— 星、远处的灯、萤火虫。
- * The night layer: stars, a lamp somewhere, and fireflies.
+ * 氛围层 —— 夜里是星、远处的灯、萤火虫；白天是浮尘、窗外的光斑、阳光里的尘埃。
+ * The ambience layer: stars, a lamp and fireflies at night; motes and sun pools by day.
+ *
+ * 两套主题走的是同一套粒子与同一次 rAF，只换调色板与混合模式：
+ * 夜里用 lighter 往暗底上加光，白天必须换回 source-over —— 在接近白的底上
+ * 做加法等于什么都没画，整层会凭空消失。
  *
  * 之前每个区块自己挂一张 canvas，结果只有首屏和末屏有萤火虫，中间一大段是空的，
  * 滚下去像忽然走出了那个夜晚。现在整页只有一张 fixed 画布铺在内容后面，
@@ -34,6 +38,23 @@ interface Particle {
   alpha: number;
 }
 
+/** 一套主题的氛围调色板：三层各自的贴图、强度，以及整层的混合模式。 */
+interface Palette {
+  composite: GlobalCompositeOperation;
+  /** 近景：萤火虫 / 浮尘 */
+  near: HTMLCanvasElement;
+  /** 远景：星 / 极淡的浮尘 */
+  far: HTMLCanvasElement;
+  /** 中景：远处的灯 / 窗光的光斑 */
+  pool: HTMLCanvasElement;
+  /** 近景粒子中心那一点实心亮核 */
+  core: string;
+  farAlpha: number;
+  poolAlpha: number;
+  nearAlpha: number;
+  coreAlpha: number;
+}
+
 /**
  * 把一团发光预先画进离屏画布。
  *
@@ -63,23 +84,62 @@ export function initAtmosphere(canvas: HTMLCanvasElement, density = 1): void {
   const ctx = canvas.getContext("2d", { alpha: true });
   if (!ctx || prefersReduced()) return;
 
-  const firefly = glowSprite([
-    [0, "rgba(255, 240, 205, 1)"],
-    [0.16, "rgba(255, 226, 172, 0.66)"],
-    [0.42, "rgba(255, 190, 120, 0.20)"],
-    [1, "rgba(255, 177, 107, 0)"],
-  ]);
-  // 星星偏冷：夏夜的天光是靛蓝的，暖白星会和萤火虫糊成一片，分不出远近
-  const star = glowSprite([
-    [0, "rgba(226, 236, 255, 1)"],
-    [0.3, "rgba(190, 210, 255, 0.42)"],
-    [1, "rgba(160, 190, 255, 0)"],
-  ], 64);
-  const lamp = glowSprite([
-    [0, "rgba(255, 186, 120, 0.5)"],
-    [0.45, "rgba(255, 160, 96, 0.16)"],
-    [1, "rgba(255, 140, 80, 0)"],
-  ], 256);
+  const night: Palette = {
+    composite: "lighter",
+    near: glowSprite([
+      [0, "rgba(255, 240, 205, 1)"],
+      [0.16, "rgba(255, 226, 172, 0.66)"],
+      [0.42, "rgba(255, 190, 120, 0.20)"],
+      [1, "rgba(255, 177, 107, 0)"],
+    ]),
+    // 星星偏冷：夏夜的天光是靛蓝的，暖白星会和萤火虫糊成一片，分不出远近
+    far: glowSprite([
+      [0, "rgba(226, 236, 255, 1)"],
+      [0.3, "rgba(190, 210, 255, 0.42)"],
+      [1, "rgba(160, 190, 255, 0)"],
+    ], 64),
+    pool: glowSprite([
+      [0, "rgba(255, 186, 120, 0.5)"],
+      [0.45, "rgba(255, 160, 96, 0.16)"],
+      [1, "rgba(255, 140, 80, 0)"],
+    ], 256),
+    core: "rgba(255, 244, 214, 1)",
+    farAlpha: 1,
+    poolAlpha: 0.1,
+    nearAlpha: 0.62,
+    coreAlpha: 0.9,
+  };
+
+  // 白天同一批粒子换了身份：萤火虫成了阳光里的浮尘，远处的灯成了窗子投在墙上的光斑。
+  // 尘埃在亮底上是"暗一点"的东西，所以是暖褐色而不是发光的暖白，强度也压得多 ——
+  // 白天的空气本来就没什么可看的，它只负责让页面不是一块死板。
+  const day: Palette = {
+    composite: "source-over",
+    near: glowSprite([
+      [0, "rgba(139, 110, 70, 0.85)"],
+      [0.22, "rgba(150, 122, 80, 0.34)"],
+      [0.55, "rgba(160, 134, 92, 0.10)"],
+      [1, "rgba(160, 134, 92, 0)"],
+    ]),
+    far: glowSprite([
+      [0, "rgba(150, 128, 96, 0.55)"],
+      [0.35, "rgba(150, 128, 96, 0.18)"],
+      [1, "rgba(150, 128, 96, 0)"],
+    ], 64),
+    pool: glowSprite([
+      [0, "rgba(255, 190, 114, 0.42)"],
+      [0.45, "rgba(255, 206, 150, 0.14)"],
+      [1, "rgba(255, 214, 160, 0)"],
+    ], 256),
+    core: "rgba(120, 94, 58, 1)",
+    farAlpha: 0.5,
+    poolAlpha: 0.17,
+    nearAlpha: 0.3,
+    coreAlpha: 0.34,
+  };
+
+  const palette = () =>
+    document.documentElement.dataset.theme === "day" ? day : night;
 
   let stars: Particle[] = [];
   let lamps: Particle[] = [];
@@ -170,26 +230,27 @@ export function initAtmosphere(canvas: HTMLCanvasElement, density = 1): void {
   const frame = (t: number) => {
     if (!running) return;
     const scroll = window.scrollY;
+    const sky = palette();
     ctx.clearRect(0, 0, width, height);
-    ctx.globalCompositeOperation = "lighter";
+    ctx.globalCompositeOperation = sky.composite;
 
-    // ---- 远：星 ----
+    // ---- 远：星 / 浮尘 ----
     for (const s of stars) {
       const twinkle = 0.55 + 0.45 * Math.sin(t * 0.001 * s.speed + s.phase);
-      blit(star, s.x, wrap(s.y - scroll * s.par, height), s.r * 5, s.alpha * twinkle);
+      blit(sky.far, s.x, wrap(s.y - scroll * s.par, height), s.r * 5, s.alpha * twinkle * sky.farAlpha);
     }
 
-    // ---- 中：远处的灯 ----
+    // ---- 中：远处的灯 / 窗光的光斑 ----
     for (const l of lamps) {
       l.x += l.vx;
       l.y += l.vy;
       if (l.x < -l.r) l.x = width + l.r;
       if (l.x > width + l.r) l.x = -l.r;
       const breath = 0.72 + 0.28 * Math.sin(t * 0.001 * l.speed + l.phase);
-      blit(lamp, l.x, wrap(l.y - scroll * l.par, height), l.r, 0.1 * l.alpha * breath);
+      blit(sky.pool, l.x, wrap(l.y - scroll * l.par, height), l.r, sky.poolAlpha * l.alpha * breath);
     }
 
-    // ---- 近：萤火虫 ----
+    // ---- 近：萤火虫 / 阳光里的尘埃 ----
     for (const f of flies) {
       f.x += f.vx;
       f.y += f.vy;
@@ -202,11 +263,11 @@ export function initAtmosphere(canvas: HTMLCanvasElement, density = 1): void {
 
       const pulse = 0.26 + 0.74 * (0.5 + 0.5 * Math.sin(t * 0.001 * f.speed + f.phase));
       const y = wrap(f.y - scroll * f.par, height);
-      blit(firefly, f.x, y, f.r * 8, 0.62 * f.alpha * pulse);
+      blit(sky.near, f.x, y, f.r * 8, sky.nearAlpha * f.alpha * pulse);
 
-      // 中心一点实心亮核：远看才像"一只虫"，而不是一团雾
-      ctx.globalAlpha = 0.9 * f.alpha * pulse;
-      ctx.fillStyle = "rgba(255, 244, 214, 1)";
+      // 中心一点实心核：远看才像"一只虫"/"一粒尘"，而不是一团雾
+      ctx.globalAlpha = sky.coreAlpha * f.alpha * pulse;
+      ctx.fillStyle = sky.core;
       ctx.beginPath();
       ctx.arc(f.x, y, f.r * 0.5, 0, Math.PI * 2);
       ctx.fill();
