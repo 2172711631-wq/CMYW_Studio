@@ -225,6 +225,10 @@ __marimo__/
 *.stl
 !shell_master/preview_shell.stl
 
+# 参数母本生成的产物：STEP、渲染图、摆盘文件都由脚本重出，不入库
+shell_master/*.step
+shell_master/*.png
+
 # 打包产物 / build artifacts
 *.exe
 _internal/
