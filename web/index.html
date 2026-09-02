@@ -3,11 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>触光工坊 Touch &amp; Light · 把一个夏夜留成一盏灯</title>
-<meta name="description" content="上传一张照片，在你自己的浏览器里生成可打印的彩色透光灯箱。四色耗材逐层叠加，让光自己把颜色混出来。照片不上传，全程本地解算。" />
+<title>彩色光影画生成器 · 拓竹 AMS 四色 | 触光工坊 Touch &amp; Light</title>
+<meta name="description" content="免费的彩色光影画（colour lithophane）生成器：上传照片，浏览器里直接算出拓竹 Bambu X1C + AMS 四色打印的 3MF。青品红黄白逐层叠加，让光把颜色混出来，不是灰的。照片不上传，全程本地解算。" />
 <meta name="theme-color" content="#161E36" />
-<meta property="og:title" content="触光工坊 Touch & Light" />
-<meta property="og:description" content="把一张照片变成会发光的记忆 —— 彩色透光灯箱生成器，全程在你的设备上运行。" />
+<meta property="og:title" content="彩色光影画生成器 · 触光工坊 Touch & Light" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:locale:alternate" content="en_US" />
+<meta property="og:description" content="把一张照片变成会发光的记忆 —— 彩色光影画生成器，拓竹 AMS 四色，全程在你自己的浏览器里跑。" />
 <meta property="og:image" content="https://my-gpu-node.top/img/og-cover.jpg" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
@@ -16,27 +18,25 @@
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="canonical" href="https://my-gpu-node.top/" />
-<script>
-  /* 主题要在第一次绘制之前定下来 —— 模块脚本是 defer 的，等它跑起来
-     页面已经按夜色画过一帧，切换会闪一下白。这一小段因此必须内联在 head。
-     没自己选过就跟着系统走；选过就以选的为准。 */
-  (function () {
-    var saved = null;
-    try { saved = localStorage.getItem("tl-theme"); } catch (e) {}
-    var day = saved ? saved === "day" : matchMedia("(prefers-color-scheme: light)").matches;
-    if (day) document.documentElement.dataset.theme = "day";
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = day ? "#F7F2E8" : "#161E36";
-  })();
-</script>
+<!-- 主题与访问统计。必须同步、必须在首屏绘制前跑完；不能内联，CSP 是 script-src 'self' -->
+<script src="/boot.js"></script>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=Karla:wght@400;500;700&family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication",
+"name":"触光工坊 Touch & Light","alternateName":"彩色光影画生成器 / Colour Lithophane Generator",
+"url":"https://my-gpu-node.top/","applicationCategory":"DesignApplication",
+"operatingSystem":"任意浏览器 / Any browser","inLanguage":["zh-CN","en"],
+"offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"},
+"description":"免费的彩色光影画生成器：上传照片，在浏览器里算出拓竹 Bambu X1C + AMS 四色打印的 3MF。青品红黄白逐层叠加，让光把颜色混出来。照片不上传。",
+"featureList":["CMYW 四色分色","0.08mm 层高","拓竹 AMS 槽位与擦料塔预设","全程浏览器本地解算，照片不上传"]}
+</script>
 <link rel="stylesheet" href="/src/styles/site.css" />
 </head>
-<body>
+<body data-title-zh="彩色光影画生成器 · 触光工坊 Touch &amp; Light" data-title-en="Colour Lithophane Generator · Touch &amp; Light">
 
 <!-- 氛围层：整页一张，固定在内容后面，昼夜各一套调色板。见 src/ui/atmosphere.ts -->
 <canvas class="atmosphere" aria-hidden="true"></canvas>

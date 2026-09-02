@@ -7,7 +7,14 @@
  */
 
 import "./site";
-import { DEFAULT_MM_PER_PX, GRID_MAX, GRID_MIN } from "../engine/constants";
+import {
+  DEFAULT_MM_PER_PX,
+  GRID_MAX,
+  GRID_MIN,
+  LAYER_DITHER_AMT,
+  LAYER_KEEP_FLOOR,
+  MESH_MERGE_FILTER,
+} from "../engine/constants";
 import { Preview3D, type Preview3DShell } from "../engine/preview3d";
 import type { WorkerRequest, WorkerResponse } from "../worker/engine.worker";
 
@@ -36,6 +43,21 @@ const els = {
   sizeOut: $<HTMLOutputElement>("sizeOut"),
   withShell: $<HTMLInputElement>("withShell"),
   shellFields: $<HTMLDivElement>("shellFields"),
+  shapeSwitch: $<HTMLDivElement>("shapeSwitch"),
+  badgeSize: $<HTMLSelectElement>("badgeSize"),
+  cropField: $<HTMLDivElement>("cropField"),
+  cropBox: $<HTMLDivElement>("cropBox"),
+  cropCanvas: $<HTMLCanvasElement>("cropCanvas"),
+  cropHole: $<HTMLDivElement>("cropHole"),
+  cropZoom: $<HTMLInputElement>("cropZoom"),
+  cropReset: $<HTMLButtonElement>("cropReset"),
+  cropZoomOut: $<HTMLOutputElement>("cropZoomOut"),
+  cropAngle: $<HTMLInputElement>("cropAngle"),
+  cropAngleOut: $<HTMLOutputElement>("cropAngleOut"),
+  density: $<HTMLSelectElement>("density"),
+  styleSwitch: $<HTMLDivElement>("styleSwitch"),
+  styleOut: $<HTMLOutputElement>("styleOut"),
+  densityOut: $<HTMLOutputElement>("densityOut"),
   swatches: $<HTMLDivElement>("swatches"),
   corner: $<HTMLInputElement>("corner"),
   cornerOut: $<HTMLOutputElement>("cornerOut"),
@@ -70,6 +92,247 @@ interface Source {
 
 let source: Source | null = null;
 let shellHex = SHELL_COLOURS[0].hex;
+let shape: "rect" | "round" = "rect";
+let styleMode: "auto" | "photo" | "art" = "auto";
+/** 上一次量出来的平坦度 0..1，供精细度的"自动"档复用 */
+let lastFlatness = 0;
+
+/* ---------------- 取景裁剪 ---------------- */
+
+/** 取景框：原图像素坐标里的一个正方形。zoom = 1 时正好铺满（cover）。 */
+const crop = { cx: 0, cy: 0, side: 0, angle: 0 };
+
+/** zoom=1 对应的边长：原图短边。再小就要留白了 */
+function coverSide(): number {
+  return source ? Math.min(source.bitmap.width, source.bitmap.height) : 0;
+}
+
+/** 缩到最小时整张图都进框：边长 = 原图长边 */
+function minZoom(): number {
+  if (!source) return 1;
+  return Math.min(source.bitmap.width, source.bitmap.height) /
+    Math.max(source.bitmap.width, source.bitmap.height);
+}
+
+function clampCrop(): void {
+  if (!source) return;
+  const { width: w, height: h } = source.bitmap;
+  // 只兜一条底线：取景框和原图至少还有一点重叠，不至于拖到全白、找不回来。
+  // 除此之外随便挪 —— 想把人物顶到边上、只留半张脸，都由着你。
+  // （旋转之后这个判据不再精确，但作为"别弄丢"的护栏够用了。）
+  const slack = crop.side * 0.85;
+  crop.cx = Math.min(Math.max(crop.cx, -slack), w + slack);
+  crop.cy = Math.min(Math.max(crop.cy, -slack), h + slack);
+}
+
+/** 把取景框映射到一块 W×H 的画布上。
+ *
+ * 预览和重采样都调这一个函数，所以框里看到什么就印出什么 —— 包括旋转。
+ * 顺序不能换：先把画布中心挪到原点，再转、再缩放，最后把取景中心拉过来。
+ */
+function paintFramed(
+  ctx: CanvasRenderingContext2D,
+  bitmap: ImageBitmap,
+  w: number,
+  h: number,
+): void {
+  ctx.save();
+  ctx.fillStyle = "#ffffff";      // 框外补白：白色在成品上是最亮的底，不是洞
+  ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(crop.angle);
+  const k = w / crop.side;
+  ctx.scale(k, k);
+  ctx.translate(-crop.cx, -crop.cy);
+  ctx.drawImage(bitmap, 0, 0);
+  ctx.restore();
+}
+
+function resetCrop(): void {
+  if (!source) return;
+  crop.side = coverSide();
+  crop.cx = source.bitmap.width / 2;
+  crop.cy = source.bitmap.height / 2;
+  crop.angle = 0;
+  els.cropAngle.value = "0";
+  // 下限压到"整图进框"之下再留一截 —— 想做成小图浮在一圈白底上也做得到
+  els.cropZoom.min = String(Math.max(5, Math.min(15, Math.floor(minZoom() * 100) - 10)));
+  els.cropZoom.value = "100";
+  clampCrop();
+  drawCrop();
+}
+
+/** 预览用的画布和真正重采样走同一个矩形，所见即所得。 */
+function drawCrop(): void {
+  if (!source) return;
+  els.cropZoomOut.textContent = `${Math.round((coverSide() / crop.side) * 100)}%`;
+  els.cropAngleOut.textContent = `${Math.round((crop.angle * 180) / Math.PI)}°`;
+  const box = els.cropBox.clientWidth || 280;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  els.cropCanvas.width = Math.round(box * dpr);
+  els.cropCanvas.height = Math.round(box * dpr);
+  const ctx = els.cropCanvas.getContext("2d");
+  if (!ctx) return;
+  paintFramed(ctx, source.bitmap, els.cropCanvas.width, els.cropCanvas.height);
+}
+
+function initCrop(): void {
+  els.cropZoom.addEventListener("input", () => {
+    if (!source) return;
+    crop.side = coverSide() / (Number(els.cropZoom.value) / 100);
+    clampCrop();
+    drawCrop();
+  });
+  els.cropZoom.addEventListener("change", requestPreview);
+  els.cropAngle.addEventListener("input", () => {
+    crop.angle = (Number(els.cropAngle.value) * Math.PI) / 180;
+    clampCrop();
+    drawCrop();
+  });
+  els.cropAngle.addEventListener("change", requestPreview);
+  els.cropReset.addEventListener("click", () => {
+    resetCrop();
+    requestPreview();
+  });
+
+  els.cropBox.addEventListener("wheel", (e) => {
+    if (!source) return;
+    e.preventDefault();
+    const step = e.deltaY > 0 ? -6 : 6;
+    const next = Math.min(300, Math.max(Number(els.cropZoom.min), Number(els.cropZoom.value) + step));
+    els.cropZoom.value = String(next);
+    els.cropZoom.dispatchEvent(new Event("input"));
+    scheduleCropPreview();
+  }, { passive: false });
+
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  els.cropBox.addEventListener("pointerdown", (e) => {
+    if (!source) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    els.cropBox.setPointerCapture(e.pointerId);
+  });
+  els.cropBox.addEventListener("pointermove", (e) => {
+    if (!dragging || !source) return;
+    // 画布上挪 1px = 原图里挪 side/画布边长 px；转过角度之后方向也要跟着转回去，
+    // 否则旋转 90° 时"往右拖"会变成"往下走"，手感立刻就不对了
+    const k = crop.side / (els.cropBox.clientWidth || 280);
+    const dx = (e.clientX - lastX) * k;
+    const dy = (e.clientY - lastY) * k;
+    const ca = Math.cos(-crop.angle);
+    const sa = Math.sin(-crop.angle);
+    crop.cx -= dx * ca - dy * sa;
+    crop.cy -= dx * sa + dy * ca;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    clampCrop();
+    drawCrop();
+  });
+  for (const evt of ["pointerup", "pointercancel"] as const) {
+    els.cropBox.addEventListener(evt, () => {
+      if (!dragging) return;
+      dragging = false;
+      scheduleCropPreview();
+    });
+  }
+}
+
+/** 拖完/滚完再重算，拖动过程中每帧重算会把设备烤热 */
+let cropTimer = 0;
+function scheduleCropPreview(): void {
+  window.clearTimeout(cropTimer);
+  cropTimer = window.setTimeout(requestPreview, 260);
+}
+
+/** 量这张图有多"平"：相邻像素几乎没有差别的比例。
+ *
+ * 平色插画大片同色 → 高；照片就算降采样过，也仍然到处是细微渐变 → 低。
+ * 拿它在"照片"和"插画"之间连续取值，比让人自己判断可靠，也比二选一细腻 ——
+ * 真实素材（带纹理的厚涂、有噪点的扫描线稿）大多落在中间。
+ */
+function flatnessOf(rgb: Uint8ClampedArray, w: number, h: number): number {
+  let flat = 0;
+  let n = 0;
+  for (let y = 0; y < h - 1; y += 1) {
+    for (let x = 0; x < w - 1; x += 1) {
+      const i = (y * w + x) * 3;
+      const r = i + 3;                 // 右邻
+      const d = ((y + 1) * w + x) * 3; // 下邻
+      const g = Math.max(
+        Math.abs(rgb[i] - rgb[r]), Math.abs(rgb[i + 1] - rgb[r + 1]), Math.abs(rgb[i + 2] - rgb[r + 2]),
+        Math.abs(rgb[i] - rgb[d]), Math.abs(rgb[i + 1] - rgb[d + 1]), Math.abs(rgb[i + 2] - rgb[d + 2]),
+      );
+      if (g <= 2) flat += 1;
+      n += 1;
+    }
+  }
+  return n ? flat / n : 0;
+}
+
+/** 平坦度 → 0（照片）..1（插画）。两端的阈值是按降采样后的实测量级定的。 */
+function artScore(flat: number): number {
+  return Math.min(1, Math.max(0, (flat - 0.35) / 0.4));
+}
+
+/** 抖动幅度：自动档按平坦度线性取，手动档取两端 */
+function ditherAmountFor(flat: number): number {
+  if (styleMode === "photo") return LAYER_DITHER_AMT;
+  if (styleMode === "art") return 0;
+  return LAYER_DITHER_AMT * (1 - artScore(flat));
+}
+
+/** 浅色保留阈值：越"平"压得越低。
+ *
+ * 这条线在照片里挡的是噪点，在线稿里挡掉的却是淡线和抗锯齿边 —— 而平色画面
+ * 本来就没有噪点要挡，所以按插画度线性往下压，最低压到默认值的两成。 */
+function keepFloorFor(flat: number): number {
+  if (styleMode === "photo") return LAYER_KEEP_FLOOR;
+  const k = styleMode === "art" ? 1 : artScore(flat);
+  return LAYER_KEEP_FLOOR * (1 - 0.8 * k);
+}
+
+/** 网格化前的中值滤波：线稿要关掉，否则 1–2 像素宽的笔画会被抹平。
+ *  代价是矩形变多、三角形涨 —— 面板上的"三角面"读数就是这个成本。 */
+function mergeFilterFor(flat: number): number {
+  if (styleMode === "photo") return MESH_MERGE_FILTER;
+  const k = styleMode === "art" ? 1 : artScore(flat);
+  return k > 0.5 ? 1 : MESH_MERGE_FILTER;
+}
+
+/** 网格密度 mm/px。
+ *
+ * 这是"细节"的真正来源：画面占多少个格子。取景缩小之后主体占的格子变少，
+ * 糊掉的就是这个。密度调高能把格子补回来。
+ *
+ * 再往细走的收益有上限 —— 喷嘴 0.4mm，XY 方向比它小的特征本来就印不出来；
+ * 0.1mm/px 已经比喷嘴细一倍，继续加只会让三角形和文件涨，画面不会更清楚。
+ */
+function mmPerPx(): number {
+  if (els.density.value !== "auto") {
+    const v = Number(els.density.value);
+    return Number.isFinite(v) && v > 0 ? v : DEFAULT_MM_PER_PX;
+  }
+  // 自动：插画靠细线吃饭，格子给密一点；照片是连续调，标准密度就够，
+  // 再密只是把三角形和文件撑大。
+  const k = styleMode === "art" ? 1 : styleMode === "photo" ? 0 : artScore(lastFlatness);
+  return k > 0.6 ? 0.1 : k > 0.3 ? 0.15 : DEFAULT_MM_PER_PX;
+}
+
+/** 当前尺寸 mm：方形取滑块的最长边，圆形取标准吧唧规格 */
+function sizeMm(): number {
+  return shape === "round" ? Number(els.badgeSize.value) : Number(els.size.value);
+}
+
+/** 形状遮罩半径：圆形 = 直径的一半；方形 = 外壳圆角（没外壳就是 0） */
+function maskRadiusMm(longestMm: number): number {
+  if (shape === "round") return longestMm / 2;
+  return els.withShell.checked ? Number(els.corner.value) : 0;
+}
 let reqId = 0;
 let previewToken = 0;
 let downloadUrl: string | null = null;
@@ -90,22 +353,36 @@ const worker = new Worker(new URL("../worker/engine.worker.ts", import.meta.url)
 
 /* ---------------- 网格计算 ---------------- */
 
-/** 按最长边和 mm/px 密度算打印网格，并夹在安全范围内。 */
-function gridFor(bitmap: ImageBitmap, longestMm: number) {
-  const ar = bitmap.width / bitmap.height;
+/** 按最长边和 mm/px 密度算打印网格，并夹在安全范围内。
+ *
+ * 圆形（吧唧）走的是"正方形画片 + 圆角半径 = 边长的一半"——圆角遮罩那套代码
+ * 在半径顶到一半时四个圆心正好重合到中心，出来就是一个正圆。不用另写裁形逻辑，
+ * 也就不会和 Python 那边的对拍分叉。 */
+function gridFor(bitmap: ImageBitmap, longestMm: number, round: boolean) {
+  const ar = round ? 1 : bitmap.width / bitmap.height;
   const widthMm = ar >= 1 ? longestMm : longestMm * ar;
   const heightMm = ar >= 1 ? longestMm / ar : longestMm;
   const clamp = (v: number) => Math.max(GRID_MIN, Math.min(GRID_MAX, Math.round(v)));
+  const mm = mmPerPx();
   return {
     widthMm,
     heightMm,
-    gridW: clamp(widthMm / DEFAULT_MM_PER_PX),
-    gridH: clamp(heightMm / DEFAULT_MM_PER_PX),
+    gridW: clamp(widthMm / mm),
+    gridH: clamp(heightMm / mm),
   };
 }
 
-/** 把图重采样到打印网格，取出像素。Canvas 的缩放已经是面积平均，够用。 */
-function resample(bitmap: ImageBitmap, gridW: number, gridH: number): Uint8ClampedArray {
+/** 把图重采样到打印网格，取出像素。Canvas 的缩放已经是面积平均，够用。
+ *
+ * crop 给的是**原图像素坐标**里的取景框，和裁剪控件预览用的是同一个矩形，
+ * 所以框里看到什么就印出什么。框可以比原图大（缩到最小时），
+ * 超出的部分留白 —— 白色在成品上就是最亮的底，不是洞。 */
+function resample(
+  bitmap: ImageBitmap,
+  gridW: number,
+  gridH: number,
+  framed = false,
+): Uint8ClampedArray {
   const canvas = document.createElement("canvas");
   canvas.width = gridW;
   canvas.height = gridH;
@@ -113,7 +390,11 @@ function resample(bitmap: ImageBitmap, gridW: number, gridH: number): Uint8Clamp
   if (!ctx) throw new Error(t("浏览器不支持 Canvas", "Canvas is unavailable"));
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bitmap, 0, 0, gridW, gridH);
+  if (framed) {
+    paintFramed(ctx, bitmap, gridW, gridH);
+  } else {
+    ctx.drawImage(bitmap, 0, 0, gridW, gridH);
+  }
   const rgba = ctx.getImageData(0, 0, gridW, gridH).data;
 
   // 引擎吃紧凑的 RGB，去掉 alpha 通道
@@ -151,6 +432,8 @@ function clearOutput(): void {
 
 /** 当前界面上的外壳设置。导出与立体预览共用同一组数字，不会各说各话。 */
 function shellSettings(): Preview3DShell | null {
+  // 圆形是吧唧，灯箱外壳对它没意义
+  if (shape === "round") return null;
   if (!els.withShell.checked) return null;
   return {
     wall: 3,
@@ -166,12 +449,34 @@ function requestPreview(): void {
   clearOutput();
   showError(null);
 
-  const longest = Number(els.size.value);
-  const { widthMm, heightMm, gridW, gridH } = gridFor(source.bitmap, longest);
-  const rgb = resample(source.bitmap, gridW, gridH);
+  // 先用一块固定的小网格量平坦度：密度要按它来定，而它自己不能再依赖密度，
+  // 否则就成了循环。192×192 够判风格，代价可以忽略。
+  lastFlatness = flatnessOf(
+    resample(source.bitmap, 192, 192, shape === "round"), 192, 192,
+  );
+  const longest = sizeMm();
+  const { widthMm, heightMm, gridW, gridH } = gridFor(source.bitmap, longest, shape === "round");
+  const rgb = resample(source.bitmap, gridW, gridH, shape === "round");
 
   els.stSize.textContent = `${widthMm.toFixed(0)} × ${heightMm.toFixed(0)} mm`;
-  els.stGrid.textContent = `${gridW} × ${gridH} px`;
+  const asked = Math.round(Math.max(widthMm, heightMm) / mmPerPx());
+  const capped = asked > GRID_MAX;
+  els.stGrid.textContent = capped
+    ? `${gridW} × ${gridH} px（已封顶）`
+    : `${gridW} × ${gridH} px`;
+  const pct = Math.round(artScore(lastFlatness) * 100);
+  els.styleOut.textContent =
+    styleMode === "auto"
+      ? t(
+          `自动 · 插画度 ${pct}%${mergeFilterFor(lastFlatness) < 3 ? " · 免滤波" : ""}`,
+          `auto · ${pct}% flat${mergeFilterFor(lastFlatness) < 3 ? " · no median" : ""}`,
+        )
+      : styleMode === "photo"
+        ? t("照片", "photo")
+        : t("插画", "art");
+  els.densityOut.textContent = capped
+    ? t(`${mmPerPx().toFixed(2)} mm/px · 受网格上限限制`, `${mmPerPx().toFixed(2)} mm/px · capped`)
+    : `${mmPerPx().toFixed(2)} mm/px`;
 
   const id = ++reqId;
   previewToken = id;
@@ -183,7 +488,10 @@ function requestPreview(): void {
     gridW,
     gridH,
     widthMm,
-    cornerRadiusMm: els.withShell.checked ? Number(els.corner.value) : 0,
+    cornerRadiusMm: maskRadiusMm(longest),
+    ditherAmount: ditherAmountFor(lastFlatness),
+    keepFloor: keepFloorFor(lastFlatness),
+    mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
 }
@@ -258,9 +566,14 @@ function startExport(): void {
   els.exportBtn.disabled = true;
   setProgress(2, t("准备中", "Preparing"));
 
-  const longest = Number(els.size.value);
-  const { widthMm, heightMm, gridW, gridH } = gridFor(source.bitmap, longest);
-  const rgb = resample(source.bitmap, gridW, gridH);
+  // 先用一块固定的小网格量平坦度：密度要按它来定，而它自己不能再依赖密度，
+  // 否则就成了循环。192×192 够判风格，代价可以忽略。
+  lastFlatness = flatnessOf(
+    resample(source.bitmap, 192, 192, shape === "round"), 192, 192,
+  );
+  const longest = sizeMm();
+  const { widthMm, heightMm, gridW, gridH } = gridFor(source.bitmap, longest, shape === "round");
+  const rgb = resample(source.bitmap, gridW, gridH, shape === "round");
 
   const msg: WorkerRequest = {
     type: "export",
@@ -272,6 +585,11 @@ function startExport(): void {
     heightMm,
     pictureName: source.name.replace(/\.[^.]+$/, "") || "CMYW Studio",
     shell: shellSettings(),
+    cornerRadiusMm: maskRadiusMm(longest),
+    badge: shape === "round" && els.withShell.checked ? { diameter: longest } : null,
+    ditherAmount: ditherAmountFor(lastFlatness),
+    keepFloor: keepFloorFor(lastFlatness),
+    mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
 }
@@ -344,6 +662,8 @@ async function loadFile(file: File): Promise<void> {
   try {
     const bitmap = await createImageBitmap(file);
     source = { bitmap, name: file.name };
+    resetCrop();          // 换图必须复位，不然新图会沿用上一张的取景框
+    syncShapeFields();    // 有图之后取景控件才该出现
     requestPreview();
   } catch {
     showError(t("这张图读不出来，换一张试试", "That image could not be decoded — try another"));
@@ -388,9 +708,54 @@ els.corner.addEventListener("input", syncCorner);
 els.corner.addEventListener("change", requestPreview);
 
 els.withShell.addEventListener("change", () => {
-  els.shellFields.style.display = els.withShell.checked ? "" : "none";
+  syncShapeFields();
   requestPreview();
 });
+
+/** 外壳设置块的显隐：圆形没有灯箱那套壁厚/深度/圆角，方形跟着勾选走。 */
+function syncShapeFields(): void {
+  const round = shape === "round";
+  // 取景控件只在圆形时有意义：方形是照片原比例，本来就不裁
+  els.cropField.hidden = !round || !source;
+  els.cropHole.dataset.shape = "round";
+  if (round && source) drawCrop();
+  els.size.hidden = round;
+  els.badgeSize.hidden = !round;
+  els.shellFields.style.display = round || !els.withShell.checked ? "none" : "";
+  document.querySelectorAll<HTMLElement>(".lbl-rect").forEach((e) => (e.hidden = round));
+  document.querySelectorAll<HTMLElement>(".lbl-round").forEach((e) => (e.hidden = !round));
+}
+
+// 形状：方形（跟照片比例）/ 圆形（吧唧）。
+// 注意这几行必须留在顶层 —— 之前误塞进 withShell 的 change 回调里，
+// 结果是不勾一次外壳，形状按钮根本没绑上事件，勾一次还会重复绑一遍。
+els.badgeSize.addEventListener("change", requestPreview);
+els.density.addEventListener("change", requestPreview);
+els.styleSwitch.querySelectorAll<HTMLButtonElement>("[data-style]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const next = (btn.dataset.style ?? "auto") as typeof styleMode;
+    if (next === styleMode) return;
+    styleMode = next;
+    els.styleSwitch.querySelectorAll<HTMLButtonElement>("[data-style]").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.style === styleMode));
+    });
+    requestPreview();
+  });
+});
+initCrop();
+els.shapeSwitch.querySelectorAll<HTMLButtonElement>("[data-shape]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const next = btn.dataset.shape === "round" ? "round" : "rect";
+    if (next === shape) return;
+    shape = next;
+    els.shapeSwitch.querySelectorAll<HTMLButtonElement>("[data-shape]").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.shape === shape));
+    });
+    syncShapeFields();
+    requestPreview();
+  });
+});
+syncShapeFields();
 
 els.exportBtn.addEventListener("click", startExport);
 

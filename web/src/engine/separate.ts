@@ -49,6 +49,22 @@ export interface LayerSet {
 export interface SeparateOptions {
   /** 有序抖动，默认开。关掉会出现明显等高线。 */
   dither?: boolean;
+  /**
+   * 抖动幅度（层）。不传就用 LAYER_DITHER_AMT。
+   *
+   * 之所以做成连续量而不是开关：抖动对照片是必需的（打散层数之间的台阶），
+   * 对平色插画是灾难（平色里撒麻点、细线被咬断），但真实素材大多在两者之间。
+   * 给一个 0..LAYER_DITHER_AMT 的连续值，就能按画面本身的平坦程度线性地取。
+   */
+  ditherAmount?: number;
+  /**
+   * 浅色保留阈值。低于它的彩色度会被整格丢掉，默认 LAYER_KEEP_FLOOR。
+   *
+   * 照片里这条线是有用的：它挡住噪点被抬成一层。但线稿的淡线和抗锯齿边缘
+   * 正好卡在这条线上，照默认值走会被整条抹掉 —— 平色画面本来也没有噪点要挡，
+   * 所以画面越"平"，这个值就该越低。
+   */
+  keepFloor?: number;
   /** 白底层数，默认 4。 */
   minWhiteLayers?: number;
 }
@@ -74,11 +90,13 @@ function quantize(
   maxLayers: number,
   gridW: number,
   dither: boolean,
+  amount: number,
   keepMask: Uint8Array | null,
+  keepFloor: number,
 ): Int32Array {
   const n = need.length;
   const out = new Int32Array(n);
-  const floor32 = f(LAYER_KEEP_FLOOR);
+  const floor32 = f(keepFloor);
   const lifted = f(0.51);
 
   for (let i = 0; i < n; i += 1) {
@@ -89,7 +107,7 @@ function quantize(
       const y = (i / gridW) | 0;
       const col = i - y * gridW;
       const bayer = BAYER4[(y & 3) * 4 + (col & 3)];
-      x = f(x + f(bayer * LAYER_DITHER_AMT));
+      x = f(x + f(bayer * amount));
     }
 
     // 仅在有彩色度处把浅色抬过取整门槛，避免中性灰被三色薄雾铺满
@@ -121,6 +139,8 @@ export function separateCMYW(
   }
 
   const dither = options.dither ?? true;
+  const ditherAmount = options.ditherAmount ?? LAYER_DITHER_AMT;
+  const keepFloor = options.keepFloor ?? LAYER_KEEP_FLOOR;
   const whiteLayers = options.minWhiteLayers ?? MIN_WHITE_LAYERS;
 
   // 白底在每个通道贡献的固定密度。Python 侧此处是 float64 运算。
@@ -171,7 +191,7 @@ export function separateCMYW(
     needY[i] = f(yChr + kBack);
 
     // 只有真正带彩色度的像素才允许抬浅层
-    keepMask[i] = f(f(cChr + mChr) + yChr) >= f(LAYER_KEEP_FLOOR) ? 1 : 0;
+    keepMask[i] = f(f(cChr + mChr) + yChr) >= f(keepFloor) ? 1 : 0;
   }
 
   const W = new Int32Array(count);
@@ -179,9 +199,9 @@ export function separateCMYW(
 
   return {
     W,
-    C: quantize(needC, MAX_LAYERS_C, gridW, dither, keepMask),
-    M: quantize(needM, MAX_LAYERS_M, gridW, dither, keepMask),
-    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, keepMask),
+    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor),
+    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor),
+    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor),
     gridW,
     gridH,
   };

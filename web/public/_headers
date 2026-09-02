@@ -7,9 +7,11 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
   Cross-Origin-Opener-Policy: same-origin
-  # script-src 不需要 unsafe-inline —— 页面里没有内联脚本。
+  # script-src 不加 unsafe-inline：首屏那段主题脚本已经挪到 /boot.js，
+  # 内联的话会被这条头直接拒掉（本地 dev 不发 CSP，所以内联版本只在上线后失效）。
+  # cloudflareinsights 是访问统计的 beacon，boot.js 里没填 token 时根本不会去加载。
   # style-src 需要，因为画廊用行内 style 传每张图的宽高比。
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self' https://static.cloudflareinsights.com https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
 
 # 带内容哈希的产物，可以永久缓存
 /assets/*

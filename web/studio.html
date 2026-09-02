@@ -3,11 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>制作台 · 触光工坊</title>
-<meta name="description" content="上传照片，在浏览器里生成可打印的彩色透光灯箱 3MF。照片不会上传到任何服务器。" />
+<title>在线做彩色光影画 · 制作台 | 触光工坊 Touch &amp; Light</title>
+<meta name="description" content="上传照片，浏览器里直接生成彩色光影画的可打印 3MF —— 拓竹 X1C + AMS 四色、0.08mm 层高，AMS 槽位与擦料塔都配好。照片不会上传到任何服务器。" />
 <meta name="theme-color" content="#161E36" />
 <meta name="robots" content="index,follow" />
-<meta property="og:title" content="制作台 · 触光工坊" />
+<meta property="og:title" content="在线做彩色光影画 · 制作台 · 触光工坊" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:locale:alternate" content="en_US" />
 <meta property="og:description" content="上传一张照片，在浏览器里生成可打印的彩色透光灯箱。照片不会离开你的设备。" />
 <meta property="og:image" content="https://my-gpu-node.top/img/og-cover.jpg" />
 <meta property="og:url" content="https://my-gpu-node.top/studio" />
@@ -15,19 +17,8 @@
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="canonical" href="https://my-gpu-node.top/studio" />
-<script>
-  /* 主题要在第一次绘制之前定下来 —— 模块脚本是 defer 的，等它跑起来
-     页面已经按夜色画过一帧，切换会闪一下白。这一小段因此必须内联在 head。
-     没自己选过就跟着系统走；选过就以选的为准。 */
-  (function () {
-    var saved = null;
-    try { saved = localStorage.getItem("tl-theme"); } catch (e) {}
-    var day = saved ? saved === "day" : matchMedia("(prefers-color-scheme: light)").matches;
-    if (day) document.documentElement.dataset.theme = "day";
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = day ? "#F7F2E8" : "#161E36";
-  })();
-</script>
+<!-- 主题与访问统计。必须同步、必须在首屏绘制前跑完；不能内联，CSP 是 script-src 'self' -->
+<script src="/boot.js"></script>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -36,7 +27,7 @@
 <link rel="stylesheet" href="/src/styles/site.css" />
 <link rel="stylesheet" href="/src/styles/studio.css" />
 </head>
-<body class="page-studio">
+<body class="page-studio" data-title-zh="在线做彩色光影画 · 制作台 · 触光工坊" data-title-en="Studio · Colour Lithophane Generator">
 
 <!-- 氛围层（夜里是萤火虫，白天是浮尘）。密度压到一半：这里要判断颜色，背景不能抢戏。
      预览区自带一层不透明底色，粒子只会出现在留白和面板后面。 -->
@@ -100,10 +91,99 @@
 
       <div class="field">
         <div class="field-head">
-          <span data-lang-zh>最长边</span><span data-lang-en>Longest edge</span>
+          <span data-lang-zh>画风</span><span data-lang-en>Artwork</span>
+          <output id="styleOut" class="mono">—</output>
+        </div>
+        <div class="view-switch" id="styleSwitch" role="group" aria-label="画风">
+          <button type="button" data-style="auto" aria-pressed="true">
+            <span data-lang-zh>自动</span><span data-lang-en>Auto</span>
+          </button>
+          <button type="button" data-style="photo" aria-pressed="false">
+            <span data-lang-zh>照片</span><span data-lang-en>Photo</span>
+          </button>
+          <button type="button" data-style="art" aria-pressed="false">
+            <span data-lang-zh>插画</span><span data-lang-en>Art</span>
+          </button>
+        </div>
+        <p class="hint">
+          <span data-lang-zh>自动会量这张图有多"平"，在照片和插画之间连续取值：越平抖动越少。抖动是给照片打散层数台阶用的，落在平色插画上只会撒麻点、咬断细线。</span>
+          <span data-lang-en>Auto measures how flat the image is and slides continuously between photo and art: the flatter it is, the less dithering. Dithering breaks up layer steps in photos, but only speckles flat art and chews through thin lines.</span>
+        </p>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <span data-lang-zh>精细度</span><span data-lang-en>Detail</span>
+          <output id="densityOut" class="mono">0.20 mm/px</output>
+        </div>
+        <select id="density">
+          <option value="auto" selected>自动 · 按画风定</option>
+          <option value="0.3">粗 · 0.30 mm/px</option>
+          <option value="0.2">标准 · 0.20 mm/px</option>
+          <option value="0.15">精细 · 0.15 mm/px</option>
+          <option value="0.1">极精细 · 0.10 mm/px</option>
+        </select>
+        <p class="hint">
+          <span data-lang-zh>取景缩得越小，画面占的格子越少，细节就越糊。把精细度调高能补回来。喷嘴 0.4mm 是物理下限，0.1 已经比它细一倍，再往下只增加三角形不增加细节。</span>
+          <span data-lang-en>Zooming out puts fewer cells on your subject, which is what blurs the detail. Raising the density buys it back. The 0.4 mm nozzle is the physical floor — 0.1 is already twice as fine, beyond that you only add triangles.</span>
+        </p>
+      </div>
+
+      <div class="field" id="cropField" hidden>
+        <div class="field-head">
+          <span data-lang-zh>取景</span><span data-lang-en>Framing</span>
+          <output id="cropZoomOut" class="mono">100%</output>
+          <button type="button" class="linklike" id="cropReset">
+            <span data-lang-zh>复位</span><span data-lang-en>Reset</span>
+          </button>
+        </div>
+        <div class="crop" id="cropBox">
+          <canvas id="cropCanvas"></canvas>
+          <div class="crop-hole" id="cropHole"></div>
+        </div>
+        <input type="range" id="cropZoom" min="40" max="500" step="1" value="100" />
+        <div class="field-head" style="margin-top:.2rem">
+          <span data-lang-zh>旋转</span><span data-lang-en>Rotate</span>
+          <output id="cropAngleOut" class="mono">0°</output>
+        </div>
+        <input type="range" id="cropAngle" min="-180" max="180" step="1" value="0" />
+        <p class="hint">
+          <span data-lang-zh>拖动挪位置，滚轮或滑块缩放，可以旋转。缩到最小时整张图都进来，圆外补白；图也可以随便挪到边上去。</span>
+          <span data-lang-en>Drag to move, wheel or slider to zoom, and rotate freely. At minimum the whole photo fits with white around it, and you can push it off to one side.</span>
+        </p>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <span data-lang-zh>形状</span><span data-lang-en>Shape</span>
+        </div>
+        <div class="view-switch" id="shapeSwitch" role="group" aria-label="形状">
+          <button type="button" data-shape="rect" aria-pressed="true">
+            <span data-lang-zh>方形</span><span data-lang-en>Rect</span>
+          </button>
+          <button type="button" data-shape="round" aria-pressed="false">
+            <span data-lang-zh>圆形</span><span data-lang-en>Round</span>
+          </button>
+        </div>
+        <p class="hint">
+          <span data-lang-zh>圆形按吧唧的标准规格来：照片取中间的正方形裁圆，灯箱外壳不适用。</span>
+          <span data-lang-en>Round follows can-badge sizing: the photo is centre-cropped to a circle; the lightbox shell does not apply.</span>
+        </p>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <span class="lbl-rect" data-lang-zh>最长边</span><span class="lbl-rect" data-lang-en>Longest edge</span>
+          <span class="lbl-round" data-lang-zh hidden>直径</span><span class="lbl-round" data-lang-en hidden>Diameter</span>
           <output id="sizeOut" class="mono">135 mm</output>
         </div>
         <input type="range" id="size" min="80" max="240" step="5" value="135" />
+        <select id="badgeSize" hidden>
+          <option value="32">32 mm</option>
+          <option value="44">44 mm</option>
+          <option value="58" selected>58 mm</option>
+          <option value="75">75 mm</option>
+        </select>
         <p class="hint">
           <span data-lang-zh>越大越清晰（看得更远），但打印时间和耗材同步上涨</span>
           <span data-lang-en>Bigger reads sharper from a distance, but costs time and filament</span>

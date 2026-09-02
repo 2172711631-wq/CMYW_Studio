@@ -98,7 +98,17 @@ export interface Build3mfOptions {
   artWidthMm: number;
   artHeightMm: number;
   /** 外壳网格与顶壁 modifier；不要外壳时传 null */
-  shell: { body: Mesh; modifier: Mesh; wall: number; topThickness: number; clearance: number } | null;
+  shell: {
+    body: Mesh;
+    modifier: Mesh;
+    wall: number;
+    topThickness: number;
+    clearance: number;
+    /** 第二个部件的名字与性质。灯箱是"顶壁实心"修改器；吧唧是实打实的后盖 */
+    secondPart?: { name: string; normal: boolean };
+    /** 外壳对象在切片器里显示的名字 */
+    objectName?: string;
+  } | null;
   shellColorHex?: string;
   pictureName?: string;
   /** 包内缩略图（PNG 字节），资源管理器与 Bambu 会显示 */
@@ -400,6 +410,12 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
   let shellMod: XmlMesh | null = null;
   let plate2 = { tx: PLATE2_TARGET_CENTER_X, ty: BED_CENTER, tz: 0 };
 
+  // 外壳对象/第二部件的名字与性质。灯箱是「壳体 + 顶壁实心修改器」，
+  // 吧唧是「前框 + 后盖」两个实打实的件 —— 后者不能挂 modifier_part，
+  // 否则切片器会把后盖当成一块只改参数的虚体，根本不打出来。
+  const shellName = shell?.objectName ?? "Lightbox_Shell_Box";
+  const second = shell?.secondPart ?? { name: SHELL_TOP_MODIFIER_NAME, normal: false };
+
   if (shell) {
     const { cx, cy } = meshCenterXY(shell.body);
     const z = meshBoundsZ(shell.body);
@@ -503,11 +519,11 @@ ${buildItems.join("\n")}
 
   if (hasShell && shellBody && shellMod) {
     ms.push(`  <object id="${SHELL_OBJECT_ID}">`);
-    ms.push('    <metadata key="name" value="Lightbox_Shell_Box"/>');
+    ms.push(`    <metadata key="name" value="${escapeXml(shellName)}"/>`);
     ms.push('    <metadata key="extruder" value="5"/>');
     ms.push(`    <metadata face_count="${shellBody.faceCount + shellMod.faceCount}"/>`);
     ms.push(`    <part id="${SHELL_BODY_PART_ID}" subtype="normal_part">`);
-    ms.push('      <metadata key="name" value="Lightbox_Shell_Box"/>');
+    ms.push(`      <metadata key="name" value="${escapeXml(shellName)}"/>`);
     ms.push(`      <metadata key="matrix" value="${IDENTITY}"/>`);
     ms.push('      <metadata key="source_offset_x" value="0"/>');
     ms.push('      <metadata key="source_offset_y" value="0"/>');
@@ -515,13 +531,17 @@ ${buildItems.join("\n")}
     ms.push('      <metadata key="extruder" value="5"/>');
     ms.push(`      ${meshStat(shellBody.faceCount)}`);
     ms.push("    </part>");
-    ms.push(`    <part id="${SHELL_MODIFIER_PART_ID}" subtype="modifier_part">`);
-    ms.push(`      <metadata key="name" value="${escapeXml(SHELL_TOP_MODIFIER_NAME)}"/>`);
+    ms.push(
+      `    <part id="${SHELL_MODIFIER_PART_ID}" ` +
+        `subtype="${second.normal ? "normal_part" : "modifier_part"}">`,
+    );
+    ms.push(`      <metadata key="name" value="${escapeXml(second.name)}"/>`);
     ms.push(`      <metadata key="matrix" value="${IDENTITY}"/>`);
     ms.push('      <metadata key="source_offset_x" value="0"/>');
     ms.push('      <metadata key="source_offset_y" value="0"/>');
     ms.push('      <metadata key="source_offset_z" value="0"/>');
-    ms.push('      <metadata key="sparse_infill_density" value="100%"/>');
+    if (second.normal) ms.push('      <metadata key="extruder" value="5"/>');
+    else ms.push('      <metadata key="sparse_infill_density" value="100%"/>');
     ms.push(`      ${meshStat(shellMod.faceCount)}`);
     ms.push("    </part>");
     ms.push("  </object>");
@@ -577,8 +597,8 @@ ${buildItems.join("\n")}
 
   if (hasShell && shellBody && shellMod) {
     const shellObjects = [
-      await meshObjectXml(SHELL_BODY_PART_ID, "Lightbox_Shell_Box", shellBody),
-      await meshObjectXml(SHELL_MODIFIER_PART_ID, SHELL_TOP_MODIFIER_NAME, shellMod),
+      await meshObjectXml(SHELL_BODY_PART_ID, shellName, shellBody),
+      await meshObjectXml(SHELL_MODIFIER_PART_ID, second.name, shellMod),
     ].join("\n");
     files.push({ name: "3D/Objects/object_2.model", data: enc.encode(objectFileModel(shellObjects)) });
   }

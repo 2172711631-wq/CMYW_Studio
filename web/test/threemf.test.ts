@@ -178,3 +178,46 @@ describe("build3mf（仅画片）", () => {
     expect(settings.filament_colour).toHaveLength(4);
   });
 });
+
+/**
+ * 吧唧外壳复用外壳那条通道，但第二个部件必须是**普通件**而不是修改器。
+ * 挂成 modifier_part 的话切片器会把后盖当成一块只改参数的虚体、根本不打出来，
+ * 而且切片预览里前框照样在，很容易带着上机才发现。
+ */
+describe("build3mf（吧唧外壳）", () => {
+  it("第二个部件是普通件，名字也跟着换", async () => {
+    const med = meshMergeFilter(Int32Array.from(layersC), gridW, gridH, 3);
+    const rects = mergeVoxelRectangles(med, Int32Array.from(zStartC), gridW, gridH, 0.08);
+    const params = { ...SHELL_DEFAULTS, artW: 58, artH: 58 };
+    const res = await build3mf({
+      layers: [{ partId: 1, name: "1_Cyan", extruder: 1, rects }],
+      gridH,
+      pixelSize: 58 / gridW,
+      artWidthMm: 58,
+      artHeightMm: 58,
+      shell: {
+        body: buildShellMesh(params),
+        modifier: buildTopSolidModifier(params),
+        wall: 0,
+        topThickness: 0,
+        clearance: 0,
+        secondPart: { name: "吧唧后盖", normal: true },
+        objectName: "吧唧前框",
+      },
+      shellColorHex: "#000000",
+      pictureName: "badge",
+    });
+    const cfg = text(readZip(res.data), "Metadata/model_settings.config");
+    expect(cfg).toContain("吧唧前框");
+    expect(cfg).toContain("吧唧后盖");
+    expect(cfg).not.toContain("modifier_part");
+    // 修改器专用的 100% 填充也不该跟到后盖上
+    expect(cfg).not.toContain('key="sparse_infill_density"');
+  });
+
+  it("灯箱那条路没被改坏：第二个部件仍然是修改器", async () => {
+    const cfg = text(readZip((await buildFixture(true)).data), "Metadata/model_settings.config");
+    expect(cfg).toContain("modifier_part");
+    expect(cfg).toContain("Lightbox_Shell_Box");
+  });
+});

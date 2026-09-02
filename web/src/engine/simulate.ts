@@ -58,7 +58,13 @@ export function simulateLit(layers: LayerSet, options: SimulateOptions = {}): Im
     out.data[i * 4] = Math.round(rgb[i * 3] * 255);
     out.data[i * 4 + 1] = Math.round(rgb[i * 3 + 1] * 255);
     out.data[i * 4 + 2] = Math.round(rgb[i * 3 + 2] * 255);
-    out.data[i * 4 + 3] = 255;
+    // 四层全 0 = 这一格没有任何材料，是被形状遮罩切掉的部分。
+    // 白底默认铺满整片，所以画面内部不可能四层全 0，这个判据不会误伤。
+    // 不置透明的话，圆形画片周围会渲染成一圈纯白，看着像方的。
+    out.data[i * 4 + 3] =
+      layers.W[i] === 0 && layers.C[i] === 0 && layers.M[i] === 0 && layers.Y[i] === 0
+        ? 0
+        : 255;
   }
   return out;
 }
