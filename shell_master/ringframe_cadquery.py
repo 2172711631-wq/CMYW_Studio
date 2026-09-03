@@ -34,6 +34,7 @@ v2 为这两样花掉的 1.7mm 直接省了。
 from __future__ import annotations
 
 import argparse
+import itertools
 import math
 import os
 
@@ -624,70 +625,98 @@ PARTS = {
 
 
 def plate_layout(
-    shapes: dict[str, cq.Workplane] | None = None, *, bed: float = 256.0, gap: float = 3.0
+    shapes: dict[str, cq.Workplane] | None = None,
+    *,
+    bed: float = 256.0,
+    gap: float = 3.0,
+    bias: tuple[float, float] = (3.0, 3.0),
 ) -> list[tuple[str, cq.Workplane]]:
     """壳子四件怎么摆在一个盘上。
 
-    通用的货架排盘器把四件排成 232 × 244，两头都顶到床边，Bambu 直接报"太靠近
-    屏蔽区域"。这里改成按零件自己的形状摆，两个要点：
+    不再手摆，也不用通用货架器 —— 直接把「每件转不转 90°」「先放谁」「一行放多宽」
+    这三样穷举一遍（四件以内，几百种组合，眨眼就完），挑**最长边最短**的那个。
+    最长边才是关键：屏蔽区在床的四边，整组越接近正方形，四周留的余量越均匀。
 
-      · **前框转 90°。** 157 × 107 横着放，才和底座并得成一排；竖着放这一排就
-        剩不下宽度了。
-      · **底盖塞进前框的取景窗里。** 那块地方本来就是空的，让底盖白占一份面积
-        不值。窗口装不下（小规格）时它自动退回去，排在第二排。
+    另加一条：底盖如果塞得进前框的取景窗，就塞进去 —— 那块地方本来就是空的。
 
-    出来大约 244 × 218（100×150 那档），比原来矮了 26mm —— 屏蔽区在床的前后两头，
-    矮下来才是有用的。
+    100×150 那档搜出来是 234 × 227.6（手摆的 244.3 × 218.1 最长边多 10mm），
+    四周各留 11mm 以上。整组再往右后方挪一点，躲开左前角那块屏蔽区。
     """
     if shapes is None:
         shapes = {name: fn() for name, fn in PARTS.items()}
-
-    def rot90(w: cq.Workplane) -> cq.Workplane:
-        return w.rotate((0, 0, 0), (0, 0, 1), 90.0)
 
     def size(w: cq.Workplane) -> tuple[float, float]:
         bb = w.val().BoundingBox()
         return bb.xlen, bb.ylen
 
-    frame = rot90(shapes["frame"])
-    base_ = rot90(shapes["base"])
-    module = rot90(shapes["module"])
-    cover = shapes["cover"]
+    def rot(w: cq.Workplane, deg: int) -> cq.Workplane:
+        return w if deg == 0 else w.rotate((0, 0, 0), (0, 0, 1), 90.0)
 
-    fw, fh = size(frame)
-    bw, bh = size(base_)
-    mw, mh = size(module)
-    cw, ch = size(cover)
-
-    # 底盖能不能塞进取景窗：窗口跟着前框一起转了 90°，留 2mm 不贴边
     p = params()
-    win_w, win_h = p["window_h"], p["window_w"]
-    nested = cw + 2.0 <= win_w and ch + 2.0 <= win_h
+    cw, ch = size(shapes["cover"])
 
-    row1_h = max(fh, bh)
-    row2_w = mw if nested else mw + gap + cw
-    row2_h = mh if nested else max(mh, ch)
-    total_w = max(fw + gap + bw, row2_w)
-    total_h = row1_h + gap + row2_h
+    best = None
+    for nest in (True, False):
+        names = ["frame", "base", "module"] + ([] if nest else ["cover"])
+        for rots in itertools.product((0, 90), repeat=len(names)):
+            dims = []
+            for n, r in zip(names, rots, strict=True):
+                w, h = size(shapes[n])
+                dims.append((h, w) if r == 90 else (w, h))
+            if nest:
+                win = (p["window_w"], p["window_h"])
+                if rots[names.index("frame")] == 90:
+                    win = (win[1], win[0])
+                if not (cw + 2.0 <= win[0] and ch + 2.0 <= win[1]):
+                    continue
+            for order in itertools.permutations(range(len(names))):
+                for limit in (150.0, 170.0, 190.0, 200.0, 210.0, 220.0, 230.0, 240.0, bed - 9.0):
+                    x = y = row_h = 0.0
+                    total_w = 0.0
+                    placed = []
+                    for i in order:
+                        w, h = dims[i]
+                        if x > 0 and x + gap + w > limit:
+                            y += row_h + gap
+                            x = 0.0
+                            row_h = 0.0
+                        if x > 0:
+                            x += gap
+                        placed.append((i, x, y, w, h))
+                        x += w
+                        total_w = max(total_w, x)
+                        row_h = max(row_h, h)
+                    total_h = y + row_h
+                    if max(total_w, total_h) > bed - 9.0:
+                        continue
+                    key = (round(max(total_w, total_h), 2), round(total_w + total_h, 2))
+                    if best is None or key < best[0]:
+                        best = (key, total_w, total_h, nest, names, rots, placed)
 
-    if max(total_w, total_h) > bed - 8.0:
-        print(f"  ⚠ 摆盘 {total_w:.1f} × {total_h:.1f} 超出可用范围，这个规格得拆两盘")
+    if best is None:  # 兜底：单列摞起来，超了也让 3MF 出得来，由报警去说
+        y = 0.0
+        out = []
+        for n, sh in shapes.items():
+            w, h = size(sh)
+            out.append((n, place(sh, 0.0, -y)))
+            y += h + gap
+        print("  ⚠ 这个规格排不进一个盘")
+        return out
 
-    # 组内坐标（左上角为原点、y 向下）→ 床坐标
-    def put(shape: cq.Workplane, x: float, y: float, w: float, h: float) -> cq.Workplane:
-        return place(shape, x + w / 2.0 - total_w / 2.0, total_h / 2.0 - (y + h / 2.0))
-
-    out = [
-        ("frame", put(frame, 0.0, 0.0, fw, fh)),
-        ("base", put(base_, fw + gap, 0.0, bw, bh)),
-        ("module", put(module, 0.0, row1_h + gap, mw, mh)),
-    ]
-    if nested:
-        # 和前框同心 —— 前框的包围盒中心就是窗口中心
-        fb = out[0][1].val().BoundingBox()
-        out.append(("cover", place(cover, (fb.xmin + fb.xmax) / 2.0, (fb.ymin + fb.ymax) / 2.0)))
-    else:
-        out.append(("cover", put(cover, mw + gap, row1_h + gap, cw, ch)))
+    _, total_w, total_h, nest, names, rots, placed = best
+    bx, by = bias
+    out: list[tuple[str, cq.Workplane]] = []
+    for i, x, y, w, h in placed:
+        shape = rot(shapes[names[i]], rots[i])
+        out.append(
+            (names[i], place(shape, bx + x + w / 2.0 - total_w / 2.0, by + total_h / 2.0 - (y + h / 2.0)))
+        )
+    if nest:
+        # 和前框同心 —— 前框的包围盒中心就是取景窗中心
+        fb = dict(out)["frame"].val().BoundingBox()
+        out.append(
+            ("cover", place(shapes["cover"], (fb.xmin + fb.xmax) / 2.0, (fb.ymin + fb.ymax) / 2.0))
+        )
     return out
 
 
@@ -740,7 +769,10 @@ def _plate_note() -> str:
     items = plate_layout()
     xs = [v for _, sh in items for v in (sh.val().BoundingBox().xmin, sh.val().BoundingBox().xmax)]
     ys = [v for _, sh in items for v in (sh.val().BoundingBox().ymin, sh.val().BoundingBox().ymax)]
-    return f"整组 {max(xs) - min(xs):.1f} × {max(ys) - min(ys):.1f} mm（前框转 90°，底盖尽量塞进取景窗）"
+    return (
+        f"整组 {max(xs) - min(xs):.1f} × {max(ys) - min(ys):.1f} mm"
+        f"（转向与次序穷举取最长边最短；底盖能塞进取景窗就塞）"
+    )
 
 
 def spec() -> list[tuple[str, str]]:

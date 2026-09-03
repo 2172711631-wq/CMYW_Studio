@@ -24,9 +24,7 @@ const SHELL_OBJECT_ID = 10;
 // 外壳部件 ID 必须避开画片的 1–4。用 1/2 时 Bambu Studio 会把画片网格
 // 误挂到外壳上，表现为「外壳变成一张薄画片」。
 const SHELL_BODY_PART_ID = 101;
-const SHELL_MODIFIER_PART_ID = 102;
-// 再多的件从 103 往后排（立牌的底座、底盖）
-const SHELL_EXTRA_PART_ID = 103;
+// 部件 id 从 101 往后顺排，避开画片占用的 1–4
 const PICTURE_IDENTIFY_ID = 1001;
 const SHELL_IDENTIFY_ID = 1002;
 const PLATE2_TARGET_CENTER_X = 440.0;
@@ -409,11 +407,22 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
   }
 
   // ---- 外壳：网格中心归零，Z 靠 transform 抬到贴盘 ----
-  // 一张件表，长度可变：灯箱是「壳体 + 顶壁修改器」两件，吧唧是「前框 + 后盖」，
-  // 立牌是「前框 + 灯板托盘 + 底座 + 底盖」四件。它们同属一个对象、同在第二个盘，
-  // 各自的摆位由网格坐标带着（烘焙时就排好了），这里只把整组挪到盘中央。
-  let shellParts: { id: number; name: string; xml: XmlMesh; subtype: string }[] = [];
-  let plate2 = { tx: PLATE2_TARGET_CENTER_X, ty: BED_CENTER, tz: 0 };
+  // 第二个盘上的对象表。
+  //
+  // 分不分对象是有讲究的：**修改器必须和它的本体同属一个对象**，否则它谁也修改不到；
+  // 而真正的实体件必须**各自成对象**，否则切片器把整套壳当成一个对象 —— 在里面选不中
+  // 单件、挪不动，而且尺寸按整组算，稍微靠近屏蔽区就直接报"可能发生碰撞"。
+  // 所以规则是：修改器跟着本体走，其余每件独立。
+  interface ShellObject {
+    objectId: number;
+    identifyId: number;
+    name: string;
+    parts: { id: number; name: string; xml: XmlMesh; subtype: string }[];
+    tx: number;
+    ty: number;
+    tz: number;
+  }
+  let shellObjects: ShellObject[] = [];
 
   // 外壳对象/第二部件的名字与性质。灯箱是「壳体 + 顶壁实心修改器」，
   // 吧唧是「前框 + 后盖」两个实打实的件 —— 后者不能挂 modifier_part，
@@ -423,27 +432,50 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
 
   if (shell) {
     const extras = shell.extraParts ?? [];
-    const b = meshesBoundsXYZ([shell.body, shell.modifier, ...extras.map((e) => e.mesh)]);
-    const zc = (b.zmin + b.zmax) / 2;
-    const xml = (m: Mesh) => meshToXml(m, -b.cx, -b.cy, -zc);
-    shellParts = [
-      { id: SHELL_BODY_PART_ID, name: shellName, xml: xml(shell.body), subtype: "normal_part" },
-      {
-        id: SHELL_MODIFIER_PART_ID,
-        name: second.name,
-        xml: xml(shell.modifier),
-        subtype: second.normal ? "normal_part" : "modifier_part",
-      },
-      ...extras.map((e, i) => ({
-        id: SHELL_EXTRA_PART_ID + i,
-        name: e.name,
-        xml: xml(e.mesh),
-        subtype: "normal_part",
-      })),
-    ];
-    plate2 = { tx: PLATE2_TARGET_CENTER_X, ty: BED_CENTER, tz: (b.zmax - b.zmin) / 2 };
+    const groups: { name: string; members: { name: string; mesh: Mesh; subtype: string }[] }[] =
+      second.normal
+        ? [
+            { name: shellName, members: [{ name: shellName, mesh: shell.body, subtype: "normal_part" }] },
+            { name: second.name, members: [{ name: second.name, mesh: shell.modifier, subtype: "normal_part" }] },
+          ]
+        : [
+            {
+              name: shellName,
+              members: [
+                { name: shellName, mesh: shell.body, subtype: "normal_part" },
+                { name: second.name, mesh: shell.modifier, subtype: "modifier_part" },
+              ],
+            },
+          ];
+    for (const e of extras) {
+      groups.push({ name: e.name, members: [{ name: e.name, mesh: e.mesh, subtype: "normal_part" }] });
+    }
+
+    // 各对象之间的相对摆位要留住（烘焙时就排好了），所以先算整组的中心，
+    // 每个对象再按它相对整组的偏移落到盘上。
+    const gb = meshesBoundsXYZ(groups.flatMap((g) => g.members.map((m) => m.mesh)));
+    let partId = SHELL_BODY_PART_ID;
+    shellObjects = groups.map((g, gi) => {
+      const ob = meshesBoundsXYZ(g.members.map((m) => m.mesh));
+      const zc = (ob.zmin + ob.zmax) / 2;
+      return {
+        objectId: SHELL_OBJECT_ID + gi,
+        identifyId: SHELL_IDENTIFY_ID + gi,
+        name: g.name,
+        parts: g.members.map((m) => ({
+          id: partId++,
+          name: m.name,
+          xml: meshToXml(m.mesh, -ob.cx, -ob.cy, -zc),
+          subtype: m.subtype,
+        })),
+        tx: PLATE2_TARGET_CENTER_X + (ob.cx - gb.cx),
+        ty: BED_CENTER + (ob.cy - gb.cy),
+        tz: (ob.zmax - ob.zmin) / 2,
+      };
+    });
   }
 
+  const shellParts = shellObjects.flatMap((o) => o.parts);
   const hasShell = shellParts.length > 0 && shellParts[0].xml.vertices.length > 0;
 
   // ---- 3D/3dmodel.model ----
@@ -466,9 +498,9 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
       `transform="${transform(0, 0)}" printable="1"/>`,
   ];
 
-  if (hasShell) {
-    const shellComponents = await Promise.all(
-      shellParts.map(
+  for (const obj of shellObjects) {
+    const comps = await Promise.all(
+      obj.parts.map(
         async (part) =>
           `    <component p:path="/3D/Objects/object_2.model" objectid="${part.id}" ` +
           `p:UUID="${await seedUuid(`shell-comp-${part.id}`)}" ` +
@@ -476,13 +508,13 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
       ),
     );
     resources.push(
-      `  <object id="${SHELL_OBJECT_ID}" p:UUID="${await seedUuid("shell-object")}" type="model" ` +
-        `name="${escapeXml(shellName)}">\n   <components>\n` +
-        `${shellComponents.join("\n")}\n   </components>\n  </object>`,
+      `  <object id="${obj.objectId}" p:UUID="${await seedUuid(`shell-object-${obj.objectId}`)}" ` +
+        `type="model" name="${escapeXml(obj.name)}">\n   <components>\n` +
+        `${comps.join("\n")}\n   </components>\n  </object>`,
     );
     buildItems.push(
-      `  <item objectid="${SHELL_OBJECT_ID}" p:UUID="${await seedUuid("build-shell")}" ` +
-        `transform="${transform(plate2.tx, plate2.ty, plate2.tz)}" printable="1"/>`,
+      `  <item objectid="${obj.objectId}" p:UUID="${await seedUuid(`build-shell-${obj.objectId}`)}" ` +
+        `transform="${transform(obj.tx, obj.ty, obj.tz)}" printable="1"/>`,
     );
   }
 
@@ -539,13 +571,13 @@ ${buildItems.join("\n")}
   }
   ms.push("  </object>");
 
-  if (hasShell) {
-    const faces = shellParts.reduce((t, p) => t + p.xml.faceCount, 0);
-    ms.push(`  <object id="${SHELL_OBJECT_ID}">`);
-    ms.push(`    <metadata key="name" value="${escapeXml(shellName)}"/>`);
+  for (const obj of shellObjects) {
+    const faces = obj.parts.reduce((t, p) => t + p.xml.faceCount, 0);
+    ms.push(`  <object id="${obj.objectId}">`);
+    ms.push(`    <metadata key="name" value="${escapeXml(obj.name)}"/>`);
     ms.push('    <metadata key="extruder" value="5"/>');
     ms.push(`    <metadata face_count="${faces}"/>`);
-    for (const part of shellParts) {
+    for (const part of obj.parts) {
       ms.push(`    <part id="${part.id}" subtype="${part.subtype}">`);
       ms.push(`      <metadata key="name" value="${escapeXml(part.name)}"/>`);
       ms.push(`      <metadata key="matrix" value="${IDENTITY}"/>`);
@@ -562,7 +594,8 @@ ${buildItems.join("\n")}
   }
 
   const plateBlock = (
-    id: number, name: string, printSettings: string, objectId: number, identifyId: number,
+    id: number, name: string, printSettings: string,
+    instances: { objectId: number; identifyId: number }[],
   ) => [
     "  <plate>",
     `    <metadata key="plater_id" value="${id}"/>`,
@@ -572,19 +605,24 @@ ${buildItems.join("\n")}
     `    <metadata key="print_settings_id" value="${printSettings}"/>`,
     '    <metadata key="printer_settings_id" value="Bambu Lab X1 Carbon 0.4 nozzle"/>',
     '    <metadata key="nozzle_diameters" value="0.4"/>',
-    "    <model_instance>",
-    `      <metadata key="object_id" value="${objectId}"/>`,
-    '      <metadata key="instance_id" value="0"/>',
-    `      <metadata key="identify_id" value="${identifyId}"/>`,
-    "    </model_instance>",
+    ...instances.flatMap((it) => [
+      "    <model_instance>",
+      `      <metadata key="object_id" value="${it.objectId}"/>`,
+      '      <metadata key="instance_id" value="0"/>',
+      `      <metadata key="identify_id" value="${it.identifyId}"/>`,
+      "    </model_instance>",
+    ]),
     "  </plate>",
   ];
 
-  ms.push(...plateBlock(1, PLATE1_NAME, "0.08mm Extra Fine @BBL X1C", PICTURE_OBJECT_ID, PICTURE_IDENTIFY_ID));
+  ms.push(
+    ...plateBlock(1, PLATE1_NAME, "0.08mm Extra Fine @BBL X1C", [
+      { objectId: PICTURE_OBJECT_ID, identifyId: PICTURE_IDENTIFY_ID },
+    ]),
+  );
   if (hasShell) {
     ms.push(
-      ...plateBlock(2, shell?.plateName ?? PLATE2_NAME, "0.2mm Standard @BBL X1C",
-        SHELL_OBJECT_ID, SHELL_IDENTIFY_ID),
+      ...plateBlock(2, shell?.plateName ?? PLATE2_NAME, "0.2mm Standard @BBL X1C", shellObjects),
     );
   }
 
@@ -593,10 +631,10 @@ ${buildItems.join("\n")}
     `   <assemble_item object_id="${PICTURE_OBJECT_ID}" instance_id="0" ` +
       `transform="${transform(0, 0)}" offset="0 0 0" />`,
   );
-  if (hasShell) {
+  for (const obj of shellObjects) {
     ms.push(
-      `   <assemble_item object_id="${SHELL_OBJECT_ID}" instance_id="0" ` +
-        `transform="${transform(plate2.tx, plate2.ty, plate2.tz)}" offset="0 0 0" />`,
+      `   <assemble_item object_id="${obj.objectId}" instance_id="0" ` +
+        `transform="${transform(obj.tx, obj.ty, obj.tz)}" offset="0 0 0" />`,
     );
   }
   ms.push("  </assemble>");
@@ -647,22 +685,25 @@ ${buildItems.join("\n")}
       data: enc.encode(plateJson(pictureBbox, PICTURE_IDENTIFY_ID, pictureName, LAYER_HEIGHT)),
     });
   }
-  const shellBbox = shellParts.reduce<[number, number, number, number] | null>((acc, p) => {
-    if (!p.xml.bbox) return acc;
-    if (!acc) return [...p.xml.bbox] as [number, number, number, number];
-    return [
-      Math.min(acc[0], p.xml.bbox[0]), Math.min(acc[1], p.xml.bbox[1]),
-      Math.max(acc[2], p.xml.bbox[2]), Math.max(acc[3], p.xml.bbox[3]),
-    ];
+  // 每个对象各自平移之后再取并集 —— 对象拆开了，包围盒不能再按一整组算
+  const shellBbox = shellObjects.reduce<[number, number, number, number] | null>((acc, o) => {
+    for (const part of o.parts) {
+      if (!part.xml.bbox) continue;
+      const b: [number, number, number, number] = [
+        part.xml.bbox[0] + o.tx, part.xml.bbox[1] + o.ty,
+        part.xml.bbox[2] + o.tx, part.xml.bbox[3] + o.ty,
+      ];
+      acc = acc
+        ? [Math.min(acc[0], b[0]), Math.min(acc[1], b[1]),
+           Math.max(acc[2], b[2]), Math.max(acc[3], b[3])]
+        : b;
+    }
+    return acc;
   }, null);
   if (hasShell && shellBbox) {
-    const b = shellBbox;
-    const shifted: [number, number, number, number] = [
-      b[0] + plate2.tx, b[1] + plate2.ty, b[2] + plate2.tx, b[3] + plate2.ty,
-    ];
     files.push({
       name: "Metadata/plate_2.json",
-      data: enc.encode(plateJson(shifted, SHELL_IDENTIFY_ID, "Lightbox_Shell_Box", 0.2)),
+      data: enc.encode(plateJson(shellBbox, SHELL_IDENTIFY_ID, shellObjects[0].name, 0.2)),
     });
   }
 

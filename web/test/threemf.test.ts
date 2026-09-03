@@ -270,18 +270,29 @@ describe("build3mf（立牌外壳：四件一盘）", () => {
     expect(cfg).not.toContain("modifier_part");
   });
 
-  it("四件同属一个对象、同在第二个盘 —— 一盘画一盘框", async () => {
+  it("四件是四个独立对象，同在第二个盘 —— 一盘画一盘框", async () => {
     const zip = readZip((await buildStandee()).data);
     const cfg = text(zip, "Metadata/model_settings.config");
-    // 盘只有两个：画片一个、外壳一个
+    // 盘还是两个：画片一盘、外壳一盘
     expect(cfg.match(/key="plater_id"/g)?.length).toBe(2);
     expect(cfg).toContain("立牌外壳建议0.2mm层高打印");
-    // 第二个盘只绑一个对象实例 —— 四件是它的四个 part，不是四个对象
+    // 但第二个盘上绑着四个对象实例 —— 合成一个对象的话，切片器里选不中单件、
+    // 挪不动，尺寸还按整组算，一靠近屏蔽区就报碰撞
     const plate2 = cfg.slice(cfg.indexOf('key="plater_id" value="2"'));
-    expect(plate2.match(/<model_instance>/g)?.length).toBe(1);
-    // 四件的网格都写进了 object_2.model
+    expect(plate2.match(/<model_instance>/g)?.length).toBe(4);
+    // 四个对象各有各的 id 和 build item
+    const model = text(zip, "3D/3dmodel.model");
+    expect(model.match(/<item objectid=/g)?.length).toBe(5); // 画片 1 + 外壳 4
     const obj2 = text(zip, "3D/Objects/object_2.model");
     expect(obj2.match(/<object /g)?.length).toBe(4);
+  });
+
+  it("四件之间的相对摆位没丢 —— 各对象的 transform 不能都一样", async () => {
+    const model = text(readZip((await buildStandee()).data), "3D/3dmodel.model");
+    const xs = [...model.matchAll(/<item objectid="1\d"[^>]*?transform="([^"]+)"/g)]
+      .map((m) => Number(m[1].trim().split(/\s+/)[9]));
+    expect(xs.length).toBe(4);
+    expect(new Set(xs).size).toBeGreaterThan(1);
   });
 
   it("包围盒是四件的并集，整组在盘上居中", async () => {
