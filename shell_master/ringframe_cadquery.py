@@ -96,11 +96,16 @@ BASE_T = 16.0         # 底板厚。要装得下 10.5mm 的软包电池，10mm �
 BASE_D = 84.0         # 进深。插槽挪到靠前，后面整片留给电池仓
 BASE_MARGIN = 5.0
 GROOVE_Y = 24.0       # 插槽中心距底座前沿。靠前放，后面才腾得出电池仓
-# 后仰版可以整块靠在槽的后壁上，直立版没有这个便宜可占 —— 画片能不能站直
-# 全看这个槽。槽浅一点、松一点，顶上就晃：晃动量 ≈ 画高 × 间隙 / 槽深，
-# 7mm / 0.4 的组合在 157mm 高的画上是 ±9mm，站着都在抖。
-GROOVE_DEPTH = 10.0
+# 插槽**打穿**到底盖：不再留槽底。
+#
+# 留槽底的代价是一道 107 × 13 的平顶悬在 10mm 高处（底座是上表面朝下打的，
+# 槽底在打印姿态里就是个天花板）。13mm 的桥本来跨得过去，但只要开着支撑，
+# 切片器就会往槽里灌一堆。打穿之后那个面根本不存在，整个底座一处朝下悬空都没有。
+#
+# 顺带两个好处：插深从 10 变成 14.4（= BASE_T − COVER_T），晃动量跟着降；
+# 画片的重量直接压在底盖上，而底盖是与底面齐平坐在桌上的，不吃弯。
 GROOVE_FIT = 0.25
+COVER_EDGE = 2.8      # 底盖四周留给外壁的宽度
 TILT = 0.0            # 90° 直立。要回后仰版把这里改回 8
 BASE_R = 6.0
 # 插槽后墙正中一条口子，过两根线（正负）就够，不用更大
@@ -197,6 +202,8 @@ def params() -> dict[str, float]:
         # 卡扣在前框坐标里的深度（灯板背面与前框背面齐平）
         "snap_z": depth - (MODULE_BACK_T + CAVITY_D * SNAP_AT),
         "base_w": frame_w + 2.0 * BASE_MARGIN,
+        # 插槽打穿到底盖顶面，所以插深由板厚和底盖厚定，不再是一个独立参数
+        "groove_depth": BASE_T - COVER_T,
         # 电池仓：插槽后方那一整片。前沿离插槽留 4mm 肉
         "bay_y0": GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + 4.0,
         "bay_y1": BASE_D - 4.0,
@@ -204,9 +211,9 @@ def params() -> dict[str, float]:
         "bay_h": BASE_T - BAY_WALL - COVER_T,
         "bay_w": (frame_w + 2.0 * BASE_MARGIN) - 8.0,
         "bay_d": (BASE_D - 4.0) - (GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + 4.0),
-        "stand_h": BASE_T + (frame_h - GROOVE_DEPTH) * math.cos(math.radians(TILT)),
+        "stand_h": BASE_T + (frame_h - (BASE_T - COVER_T)) * math.cos(math.radians(TILT)),
         # 顶端能晃多少：槽里的间隙被画高放大了这么多倍
-        "sway": (frame_h - GROOVE_DEPTH) * (GROOVE_FIT / GROOVE_DEPTH),
+        "sway": (frame_h - (BASE_T - COVER_T)) * (GROOVE_FIT / (BASE_T - COVER_T)),
     }
 
 
@@ -418,12 +425,12 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
         (0.0, BASE_D / 2.0, 0.0)
     )
 
-    # 斜插槽，挪到靠前
+    # 插槽，挪到靠前。往下一直开到底盖沉槽顶面 —— 打穿，不留槽底
     slot = (
         cq.Workplane("XY")
         .rect(p["frame_w"] + GROOVE_FIT, p["depth"] + GROOVE_FIT)
         .extrude(60.0)
-        .translate((0.0, 0.0, -GROOVE_DEPTH))
+        .translate((0.0, 0.0, -p["groove_depth"]))
         .rotate((0, 0, 0), (1, 0, 0), -TILT)
         .translate((0.0, GROOVE_Y, BASE_T))
     )
@@ -443,13 +450,15 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
         _box_xyz(-bay_x, bay_x, p["bay_y0"], p["bay_y1"], z_bay0, z_bay1)
     )
 
-    # 底盖沉槽：比电池仓大一圈，底盖沉进去与底面齐平
+    # 底盖沉槽：铺满整个底面（只留四周外壁），底盖沉进去与底面齐平。
+    # 铺满是必须的 —— 插槽要打穿到这儿，槽底才不存在；顺带底盖变成一整块底板，
+    # 前后两段被插槽切开之后靠它连成一体，走线也藏在下面。
     base = base.cut(
         _box_xyz(
             -(bay_x + COVER_LIP),
             bay_x + COVER_LIP,
-            p["bay_y0"] - COVER_LIP,
-            p["bay_y1"] + COVER_LIP,
+            COVER_EDGE,
+            BASE_D - COVER_EDGE,
             -1.0,
             COVER_T + 0.1,
         )
@@ -458,8 +467,8 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
     # 底盖卡扣凹坑
     if COVER_SNAP > 1e-4:
         for sx in (-1, 1):
-            for sy in (0.3, 0.7):
-                y = p["bay_y0"] + (p["bay_y1"] - p["bay_y0"]) * sy
+            for sy in (0.25, 0.75):
+                y = COVER_EDGE + (BASE_D - 2.0 * COVER_EDGE) * sy
                 x0 = sx * (bay_x + COVER_LIP)
                 x1 = sx * (bay_x + COVER_LIP + COVER_SNAP + 0.15)
                 base = base.cut(
@@ -469,12 +478,12 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
                     )
                 )
 
-    # 走线：从插槽后墙通到电池仓
-    z0 = BASE_T - GROOVE_DEPTH
+    # 走线：从插槽后墙通到电池仓，贴着底盖走
+    z0 = COVER_T + 0.1
     base = base.cut(
         _box_xyz(
             -BASE_WIRE_W / 2.0, BASE_WIRE_W / 2.0,
-            GROOVE_Y, p["bay_y0"] + 2.0, z0 - BASE_WIRE_H, z0 + 0.1,
+            GROOVE_Y, p["bay_y0"] + 2.0, z0, z0 + BASE_WIRE_H,
         )
     )
 
@@ -514,7 +523,7 @@ def build_cover() -> cq.Workplane:
     p = params()
     bay_x = p["base_w"] / 2.0 - 4.0
     w = 2.0 * (bay_x + COVER_LIP) - COVER_FIT
-    d = (p["bay_y1"] - p["bay_y0"]) + 2.0 * COVER_LIP - COVER_FIT
+    d = (BASE_D - 2.0 * COVER_EDGE) - COVER_FIT
     cover = (
         cq.Workplane("XY")
         .box(w, d, COVER_T, centered=(True, True, False))
@@ -576,7 +585,7 @@ def build_assembly() -> cq.Workplane:
     frame = upright(build_frame())
     bb = frame.val().BoundingBox()
     dy = GROOVE_Y - (bb.ymin + bb.ymax) / 2.0
-    dz = BASE_T - GROOVE_DEPTH - bb.zmin
+    dz = BASE_T - p["groove_depth"] - bb.zmin   # 画片坐到底盖顶面上
     frame = frame.translate((0.0, dy, dz))
 
     # 灯板翻过来插进前框：盘口朝前，盘底与前框背面齐平。
@@ -592,9 +601,8 @@ def build_assembly() -> cq.Workplane:
     # 模拟画片：躺在前框的画片槽里（z_art 起，留 FIT 的横向间隙）
     art = upright(build_art_mock().translate((0.0, 0.0, p["z_art"]))).translate((0.0, dy, dz))
 
-    # 底盖：扣在电池仓下面，沉进去和底面齐平
-    bay_y = (p["bay_y0"] + p["bay_y1"]) / 2.0
-    cover = build_cover().translate((0.0, bay_y, 0.0))
+    # 底盖：现在是一整块底板，扣满整个底面
+    cover = build_cover().translate((0.0, BASE_D / 2.0, 0.0))
 
     return cq.Workplane("XY").add(
         cq.Compound.makeCompound(
@@ -747,9 +755,12 @@ def spec() -> list[tuple[str, str]]:
         ),
         (
             "插槽",
-            f"深 {GROOVE_DEPTH:.0f}、间隙 {GROOVE_FIT:.2f} → 顶端晃动 ±{p['sway']:.1f} mm"
-            + ("" if p["sway"] < 5.0 else "  ← **太晃，把槽加深或把间隙收紧**"),
+            f"打穿到底盖，插深 {p['groove_depth']:.1f}、间隙 {GROOVE_FIT:.2f} → "
+            f"顶端晃动 ±{p['sway']:.1f} mm"
+            + ("" if p["sway"] < 5.0 else "  ← **太晃，把间隙收紧**"),
         ),
+        ("底盖", f'{p["base_w"] - 5.6 - COVER_FIT:.1f} × {BASE_D - 2 * COVER_EDGE - COVER_FIT:.1f} '
+                 f"× {COVER_T} mm 整块底板；插槽的底就是它"),
         ("画片", f"{ART_W:.0f} × {ART_H:.0f} mm，厚 ≤1.76（22 层 × 0.08）"),
         (
             "画片可见",
