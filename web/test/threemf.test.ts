@@ -221,3 +221,82 @@ describe("build3mf（吧唧外壳）", () => {
     expect(cfg).toContain("Lightbox_Shell_Box");
   });
 });
+
+/**
+ * 立牌是四件一盘 —— 「一盘画一盘框」全靠这个：四件必须落在同一个对象、同一个盘上，
+ * 而且都得是实体件。任何一件掉出去，用户拿到的就是缺零件的壳。
+ */
+describe("build3mf（立牌外壳：四件一盘）", () => {
+  const shift = (m: { vertices: Float64Array; indices: Uint32Array }, dx: number) => {
+    const v = Float64Array.from(m.vertices);
+    for (let i = 0; i < v.length; i += 3) v[i] += dx;
+    return { vertices: v, indices: m.indices };
+  };
+
+  const buildStandee = async () => {
+    const med = meshMergeFilter(Int32Array.from(layersC), gridW, gridH, 3);
+    const rects = mergeVoxelRectangles(med, Int32Array.from(zStartC), gridW, gridH, 0.08);
+    const params = { ...SHELL_DEFAULTS, artW: 100, artH: 150 };
+    const body = buildShellMesh(params);
+    return build3mf({
+      layers: [{ partId: 1, name: "1_Cyan", extruder: 1, rects }],
+      gridH,
+      pixelSize: 100 / gridW,
+      artWidthMm: 100,
+      artHeightMm: 150,
+      shell: {
+        body,
+        modifier: shift(body, 40),
+        wall: 0,
+        topThickness: 0,
+        clearance: 0,
+        secondPart: { name: "灯板托盘", normal: true },
+        objectName: "立牌前框",
+        extraParts: [
+          { name: "底座", mesh: shift(body, 80) },
+          { name: "底盖", mesh: shift(body, 120) },
+        ],
+        plateName: "立牌外壳建议0.2mm层高打印",
+      },
+      shellColorHex: "#000000",
+      pictureName: "standee",
+    });
+  };
+
+  it("四件全在，且都是实体件", async () => {
+    const cfg = text(readZip((await buildStandee()).data), "Metadata/model_settings.config");
+    for (const n of ["立牌前框", "灯板托盘", "底座", "底盖"]) expect(cfg).toContain(n);
+    expect(cfg.match(/subtype="normal_part"/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(cfg).not.toContain("modifier_part");
+  });
+
+  it("四件同属一个对象、同在第二个盘 —— 一盘画一盘框", async () => {
+    const zip = readZip((await buildStandee()).data);
+    const cfg = text(zip, "Metadata/model_settings.config");
+    // 盘只有两个：画片一个、外壳一个
+    expect(cfg.match(/key="plater_id"/g)?.length).toBe(2);
+    expect(cfg).toContain("立牌外壳建议0.2mm层高打印");
+    // 第二个盘只绑一个对象实例 —— 四件是它的四个 part，不是四个对象
+    const plate2 = cfg.slice(cfg.indexOf('key="plater_id" value="2"'));
+    expect(plate2.match(/<model_instance>/g)?.length).toBe(1);
+    // 四件的网格都写进了 object_2.model
+    const obj2 = text(zip, "3D/Objects/object_2.model");
+    expect(obj2.match(/<object /g)?.length).toBe(4);
+  });
+
+  it("包围盒是四件的并集，整组在盘上居中", async () => {
+    const zip = readZip((await buildStandee()).data);
+    const plate = JSON.parse(text(zip, "Metadata/plate_2.json")) as {
+      bbox_all: [number, number, number, number];
+    };
+    const [x0, y0, x1, y1] = plate.bbox_all;
+    // 只按前框算的话宽度会缩到 ~107；并集必须把挪到 +120 的底盖也框进去
+    expect(x1 - x0).toBeGreaterThan(120);
+    // 整组要放得下一个盘
+    expect(x1 - x0).toBeLessThanOrEqual(256);
+    expect(y1 - y0).toBeLessThanOrEqual(256);
+    // 第二个盘摆在 x=440 那一列（沿用灯箱的摆位），整组该落在它的中心
+    expect((x0 + x1) / 2).toBeCloseTo(440, 1);
+    expect((y0 + y1) / 2).toBeCloseTo(128, 1);
+  });
+});

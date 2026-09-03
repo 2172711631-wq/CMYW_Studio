@@ -69,6 +69,47 @@ def place(shape: cq.Workplane, x: float, y: float, rot: float = 0.0) -> cq.Workp
     )
 
 
+def pack_plates(
+    parts: list[tuple[str, cq.Workplane]],
+    *,
+    bed: float = 247.0,   # 256 的热床，四边各留 4.5 留给裙边和边缘吸附
+    gap: float = 3.0,     # 件与件之间；再小切片器会把它们当一坨算裙边
+) -> list[list[tuple[str, cq.Workplane]]]:
+    """货架式排盘：能挤进一盘就一盘，挤不下才开第二盘。
+
+    以前是按颜色写死分两盘的，但那不是零件的属性 —— 一套小尺寸的壳四件本来就
+    放得下一盘，硬拆成两盘等于让人多换一次料、多等一次开机。所以改成实际去排，
+    排得下就是一盘。
+
+    高的先放，一行一行往上摞（shelf packing）。够用了：这些零件都是矩形薄片，
+    而且一盘上也就三五件，没必要上真正的装箱算法。
+    """
+    sized = []
+    for name, shape in parts:
+        bb = shape.val().BoundingBox()
+        sized.append((bb.xlen, bb.ylen, name, shape))
+    sized.sort(key=lambda t: -t[1])
+
+    plates: list[list[tuple[str, cq.Workplane]]] = []
+    cur: list[tuple[str, cq.Workplane]] = []
+    x = y = row_h = 0.0
+    for w, h, name, shape in sized:
+        if x > 0 and x + w > bed:          # 这一行放不下了，换行
+            y += row_h + gap
+            x = 0.0
+            row_h = 0.0
+        if y + h > bed and cur:            # 这一盘也放不下了，换盘
+            plates.append(cur)
+            cur = []
+            x = y = row_h = 0.0
+        cur.append((name, place(shape, x + w / 2.0 - bed / 2.0, bed / 2.0 - (y + h / 2.0))))
+        x += w + gap
+        row_h = max(row_h, h)
+    if cur:
+        plates.append(cur)
+    return plates
+
+
 def write_3mf(
     path: str, parts: list[tuple[str, cq.Workplane]], *, tol: float = 0.05, ang: float = 0.2
 ) -> str:

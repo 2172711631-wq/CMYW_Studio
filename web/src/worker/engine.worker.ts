@@ -57,6 +57,7 @@ export type WorkerRequest =
       mergeFilter?: number;
       /** 圆形时要不要连吧唧外壳一起打包 */
       badge?: { diameter: number } | null;
+      standee?: { w: number; h: number } | null;
       pictureName: string;
     };
 
@@ -128,6 +129,41 @@ async function loadBadge(diameter: number): Promise<BakedBadge> {
   });
   const baked = { front: conv("front"), back: conv("back") };
   badgeCache.set(diameter, baked);
+  return baked;
+}
+
+/* ---------------- 立牌外壳 ---------------- */
+
+interface BakedStandee {
+  order: string[];
+  parts: Record<string, { label: string; vertices: Float64Array; indices: Uint32Array }>;
+}
+
+const standeeCache = new Map<string, BakedStandee>();
+
+/** 四件的坐标在烘焙时就排好盘了，这里原样取出来 —— 排盘算法只有 Python 那一份。 */
+async function loadStandee(w: number, h: number): Promise<BakedStandee> {
+  const key = `${w.toFixed(0)}x${h.toFixed(0)}`;
+  const hit = standeeCache.get(key);
+  if (hit) return hit;
+  const res = await fetch(`/standee/${key}.json`);
+  if (!res.ok) {
+    throw new Error(`没有 ${key} 的立牌外壳数据 / no baked standee shell for ${key}`);
+  }
+  const raw = (await res.json()) as {
+    order: string[];
+    parts: Record<string, { label: string; vertices: number[]; indices: number[] }>;
+  };
+  const parts: BakedStandee["parts"] = {};
+  for (const [k, v] of Object.entries(raw.parts)) {
+    parts[k] = {
+      label: v.label,
+      vertices: Float64Array.from(v.vertices),
+      indices: Uint32Array.from(v.indices),
+    };
+  }
+  const baked = { order: raw.order, parts };
+  standeeCache.set(key, baked);
   return baked;
 }
 
@@ -211,9 +247,28 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       rects: mergeVoxelRectangles(p.layer, p.zs, gridW, gridH, LAYER_HEIGHT),
     }));
 
-    report(req.id, 72, shell || req.badge ? "生成外壳" : "组装 3MF");
+    report(req.id, 72, shell || req.badge || req.standee ? "生成外壳" : "组装 3MF");
     let shellInput = null;
-    if (req.badge) {
+    if (req.standee) {
+      // 立牌是四件一盘。前框走 body，灯板托盘占掉 modifier 那个位置（实体，不是修改器），
+      // 底座和底盖挂在 extraParts 上 —— 四件同属一个对象、同在第二个盘，
+      // 于是导出来就是「一盘画一盘框」，和小夜灯那个 3MF 一个形状。
+      const baked = await loadStandee(req.standee.w, req.standee.h);
+      const pick = (k: string) => baked.parts[k];
+      shellInput = {
+        body: pick("frame"),
+        modifier: pick("module"),
+        wall: 0,
+        topThickness: 0,
+        clearance: 0,
+        secondPart: { name: pick("module").label, normal: true },
+        objectName: pick("frame").label,
+        extraParts: baked.order
+          .filter((k) => k !== "frame" && k !== "module")
+          .map((k) => ({ name: pick(k).label, mesh: pick(k) })),
+        plateName: "立牌外壳建议0.2mm层高打印",
+      };
+    } else if (req.badge) {
       // 吧唧外壳跑不了 CadQuery，是 tools/bake_badge.py 从同一个母本烘出来的，
       // 放在 public/badge/ 按需取 —— 不进主包，只有真做吧唧的人才下这几十 KB。
       const baked = await loadBadge(req.badge.diameter);

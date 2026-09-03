@@ -94,20 +94,9 @@
           <span data-lang-zh>画风</span><span data-lang-en>Artwork</span>
           <output id="styleOut" class="mono">—</output>
         </div>
-        <div class="view-switch" id="styleSwitch" role="group" aria-label="画风">
-          <button type="button" data-style="auto" aria-pressed="true">
-            <span data-lang-zh>自动</span><span data-lang-en>Auto</span>
-          </button>
-          <button type="button" data-style="photo" aria-pressed="false">
-            <span data-lang-zh>照片</span><span data-lang-en>Photo</span>
-          </button>
-          <button type="button" data-style="art" aria-pressed="false">
-            <span data-lang-zh>插画</span><span data-lang-en>Art</span>
-          </button>
-        </div>
         <p class="hint">
-          <span data-lang-zh>自动会量这张图有多"平"，在照片和插画之间连续取值：越平抖动越少。抖动是给照片打散层数台阶用的，落在平色插画上只会撒麻点、咬断细线。</span>
-          <span data-lang-en>Auto measures how flat the image is and slides continuously between photo and art: the flatter it is, the less dithering. Dithering breaks up layer steps in photos, but only speckles flat art and chews through thin lines.</span>
+          <span data-lang-zh>自动量这张图有多"平"，在照片和插画之间连续取值：越平抖动越少。抖动是给照片打散层数台阶用的，落在平色插画上只会撒麻点、咬断细线。</span>
+          <span data-lang-en>Measures how flat the image is and slides continuously between photo and art: the flatter it is, the less dithering. Dithering breaks up layer steps in photos, but only speckles flat art and chews through thin lines.</span>
         </p>
       </div>
 
@@ -159,15 +148,20 @@
         </div>
         <div class="view-switch" id="shapeSwitch" role="group" aria-label="形状">
           <button type="button" data-shape="rect" aria-pressed="true">
-            <span data-lang-zh>方形</span><span data-lang-en>Rect</span>
+            <span data-lang-zh>相片</span><span data-lang-en>Photo</span>
           </button>
-          <button type="button" data-shape="round" aria-pressed="false">
+          <!-- 吧唧先收起来：⌀58 上一个汉字摊不到 0.4mm 喷嘴能分辨的宽度，
+               打出来糊成一团。代码和烘好的壳都留着，尺寸做上去了再放出来。 -->
+          <button type="button" data-shape="round" aria-pressed="false" hidden>
             <span data-lang-zh>圆形</span><span data-lang-en>Round</span>
+          </button>
+          <button type="button" data-shape="standee" aria-pressed="false">
+            <span data-lang-zh>立牌</span><span data-lang-en>Standee</span>
           </button>
         </div>
         <p class="hint">
-          <span data-lang-zh>圆形按吧唧的标准规格来：照片取中间的正方形裁圆，灯箱外壳不适用。</span>
-          <span data-lang-en>Round follows can-badge sizing: the photo is centre-cropped to a circle; the lightbox shell does not apply.</span>
+          <span data-lang-zh>相片跟原图比例，配灯箱外壳；立牌是竖版固定比例，配底座灯那一套，还能自己取景。</span>
+          <span data-lang-en>Photo keeps the image's own aspect and pairs with the lightbox shell. Standee is a fixed portrait ratio matching the lit base, and lets you frame it yourself.</span>
         </p>
       </div>
 
@@ -178,6 +172,11 @@
           <output id="sizeOut" class="mono">135 mm</output>
         </div>
         <input type="range" id="size" min="80" max="240" step="5" value="135" />
+        <select id="standeeSize" hidden>
+          <option value="60x90">60 × 90 mm · 迷你</option>
+          <option value="80x120">80 × 120 mm</option>
+          <option value="100x150" selected>100 × 150 mm · 常规立牌</option>
+        </select>
         <select id="badgeSize" hidden>
           <option value="32">32 mm</option>
           <option value="44">44 mm</option>
@@ -194,9 +193,13 @@
         <label class="switch">
           <input type="checkbox" id="withShell" checked />
           <span></span>
-          <em data-lang-zh>连灯箱外壳一起生成</em>
-          <em data-lang-en>Include the lightbox shell</em>
+          <em data-lang-zh>连外壳一起生成（第二个盘）</em>
+          <em data-lang-en>Include the shell (second plate)</em>
         </label>
+        <p class="hint">
+          <span data-lang-zh>一盘画片、一盘外壳。壳只用打一次，之后换画片时把这个勾去掉就只导画片。</span>
+          <span data-lang-en>One plate of picture, one of shell. The shell prints once — untick this when you just want another picture.</span>
+        </p>
       </div>
 
       <div class="field" id="shellFields">
@@ -264,6 +267,13 @@
         <p class="hint">
           <span data-lang-zh>用 Bambu Studio 打开 · 1–4 号槽装青/品红/黄/白 PLA · 画片盘务必 0.08mm 层高、100% 填充</span>
           <span data-lang-en>Open in Bambu Studio · slots 1–4 = cyan/magenta/yellow/white PLA · picture plate must be 0.08 mm at 100% infill</span>
+        </p>
+        <!-- 立牌的壳和画片是两个文件、两次打印（壳打一次，画片可以换很多张），
+             但尺寸必须是同一个数。所以这里把配套壳子的命令按当前选的画幅直接写出来。 -->
+        <p class="hint" id="shellCmd" hidden>
+          <span data-lang-zh>配套底座灯外壳（壳打一次，画片可以随便换）：</span>
+          <span data-lang-en>Matching lit base shell (print once; swap pictures freely):</span>
+          <br /><code class="mono" id="shellCmdText"></code>
         </p>
       </div>
     </section>

@@ -25,6 +25,8 @@ const SHELL_OBJECT_ID = 10;
 // 误挂到外壳上，表现为「外壳变成一张薄画片」。
 const SHELL_BODY_PART_ID = 101;
 const SHELL_MODIFIER_PART_ID = 102;
+// 再多的件从 103 往后排（立牌的底座、底盖）
+const SHELL_EXTRA_PART_ID = 103;
 const PICTURE_IDENTIFY_ID = 1001;
 const SHELL_IDENTIFY_ID = 1002;
 const PLATE2_TARGET_CENTER_X = 440.0;
@@ -108,6 +110,11 @@ export interface Build3mfOptions {
     secondPart?: { name: string; normal: boolean };
     /** 外壳对象在切片器里显示的名字 */
     objectName?: string;
+    /** 再多挂几个实体件，和 body 同一个对象、同一个盘。
+     *  网格里必须已经带好各自在盘上的相对摆位 —— 这里只做整组居中，不排盘。 */
+    extraParts?: { name: string; mesh: Mesh }[];
+    /** 第二个盘在切片器里的名字 */
+    plateName?: string;
   } | null;
   shellColorHex?: string;
   pictureName?: string;
@@ -219,23 +226,19 @@ function meshToXml(mesh: Mesh, dx = 0, dy = 0, dz = 0): XmlMesh {
   };
 }
 
-function meshBoundsZ(mesh: Mesh): { min: number; max: number } {
-  let min = Infinity;
-  let max = -Infinity;
-  for (let i = 2; i < mesh.vertices.length; i += 3) {
-    min = Math.min(min, mesh.vertices[i]);
-    max = Math.max(max, mesh.vertices[i]);
+function meshesBoundsXYZ(meshes: Mesh[]): {
+  cx: number; cy: number; zmin: number; zmax: number;
+} {
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const m of meshes) {
+    for (let i = 0; i < m.vertices.length; i += 3) {
+      minX = Math.min(minX, m.vertices[i]); maxX = Math.max(maxX, m.vertices[i]);
+      minY = Math.min(minY, m.vertices[i + 1]); maxY = Math.max(maxY, m.vertices[i + 1]);
+      minZ = Math.min(minZ, m.vertices[i + 2]); maxZ = Math.max(maxZ, m.vertices[i + 2]);
+    }
   }
-  return { min, max };
-}
-
-function meshCenterXY(mesh: Mesh): { cx: number; cy: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (let i = 0; i < mesh.vertices.length; i += 3) {
-    minX = Math.min(minX, mesh.vertices[i]); maxX = Math.max(maxX, mesh.vertices[i]);
-    minY = Math.min(minY, mesh.vertices[i + 1]); maxY = Math.max(maxY, mesh.vertices[i + 1]);
-  }
-  return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+  return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, zmin: minZ, zmax: maxZ };
 }
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
@@ -406,8 +409,10 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
   }
 
   // ---- 外壳：网格中心归零，Z 靠 transform 抬到贴盘 ----
-  let shellBody: XmlMesh | null = null;
-  let shellMod: XmlMesh | null = null;
+  // 一张件表，长度可变：灯箱是「壳体 + 顶壁修改器」两件，吧唧是「前框 + 后盖」，
+  // 立牌是「前框 + 灯板托盘 + 底座 + 底盖」四件。它们同属一个对象、同在第二个盘，
+  // 各自的摆位由网格坐标带着（烘焙时就排好了），这里只把整组挪到盘中央。
+  let shellParts: { id: number; name: string; xml: XmlMesh; subtype: string }[] = [];
   let plate2 = { tx: PLATE2_TARGET_CENTER_X, ty: BED_CENTER, tz: 0 };
 
   // 外壳对象/第二部件的名字与性质。灯箱是「壳体 + 顶壁实心修改器」，
@@ -417,15 +422,29 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
   const second = shell?.secondPart ?? { name: SHELL_TOP_MODIFIER_NAME, normal: false };
 
   if (shell) {
-    const { cx, cy } = meshCenterXY(shell.body);
-    const z = meshBoundsZ(shell.body);
-    const zc = (z.min + z.max) / 2;
-    shellBody = meshToXml(shell.body, -cx, -cy, -zc);
-    shellMod = meshToXml(shell.modifier, -cx, -cy, -zc);
-    plate2 = { tx: PLATE2_TARGET_CENTER_X, ty: BED_CENTER, tz: (z.max - z.min) / 2 };
+    const extras = shell.extraParts ?? [];
+    const b = meshesBoundsXYZ([shell.body, shell.modifier, ...extras.map((e) => e.mesh)]);
+    const zc = (b.zmin + b.zmax) / 2;
+    const xml = (m: Mesh) => meshToXml(m, -b.cx, -b.cy, -zc);
+    shellParts = [
+      { id: SHELL_BODY_PART_ID, name: shellName, xml: xml(shell.body), subtype: "normal_part" },
+      {
+        id: SHELL_MODIFIER_PART_ID,
+        name: second.name,
+        xml: xml(shell.modifier),
+        subtype: second.normal ? "normal_part" : "modifier_part",
+      },
+      ...extras.map((e, i) => ({
+        id: SHELL_EXTRA_PART_ID + i,
+        name: e.name,
+        xml: xml(e.mesh),
+        subtype: "normal_part",
+      })),
+    ];
+    plate2 = { tx: PLATE2_TARGET_CENTER_X, ty: BED_CENTER, tz: (b.zmax - b.zmin) / 2 };
   }
 
-  const hasShell = shellBody !== null && shellBody.vertices.length > 0;
+  const hasShell = shellParts.length > 0 && shellParts[0].xml.vertices.length > 0;
 
   // ---- 3D/3dmodel.model ----
   const componentLines = await Promise.all(
@@ -448,15 +467,18 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
   ];
 
   if (hasShell) {
-    const compBody = await seedUuid("shell-comp-body");
-    const compMod = await seedUuid("shell-comp-mod");
+    const shellComponents = await Promise.all(
+      shellParts.map(
+        async (part) =>
+          `    <component p:path="/3D/Objects/object_2.model" objectid="${part.id}" ` +
+          `p:UUID="${await seedUuid(`shell-comp-${part.id}`)}" ` +
+          `transform="1 0 0 0 1 0 0 0 1 0 0 0"/>`,
+      ),
+    );
     resources.push(
       `  <object id="${SHELL_OBJECT_ID}" p:UUID="${await seedUuid("shell-object")}" type="model" ` +
-        `name="${escapeXml("Lightbox_Shell_Box")}">\n   <components>\n` +
-        `    <component p:path="/3D/Objects/object_2.model" objectid="${SHELL_BODY_PART_ID}" ` +
-        `p:UUID="${compBody}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>\n` +
-        `    <component p:path="/3D/Objects/object_2.model" objectid="${SHELL_MODIFIER_PART_ID}" ` +
-        `p:UUID="${compMod}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>\n   </components>\n  </object>`,
+        `name="${escapeXml(shellName)}">\n   <components>\n` +
+        `${shellComponents.join("\n")}\n   </components>\n  </object>`,
     );
     buildItems.push(
       `  <item objectid="${SHELL_OBJECT_ID}" p:UUID="${await seedUuid("build-shell")}" ` +
@@ -517,33 +539,25 @@ ${buildItems.join("\n")}
   }
   ms.push("  </object>");
 
-  if (hasShell && shellBody && shellMod) {
+  if (hasShell) {
+    const faces = shellParts.reduce((t, p) => t + p.xml.faceCount, 0);
     ms.push(`  <object id="${SHELL_OBJECT_ID}">`);
     ms.push(`    <metadata key="name" value="${escapeXml(shellName)}"/>`);
     ms.push('    <metadata key="extruder" value="5"/>');
-    ms.push(`    <metadata face_count="${shellBody.faceCount + shellMod.faceCount}"/>`);
-    ms.push(`    <part id="${SHELL_BODY_PART_ID}" subtype="normal_part">`);
-    ms.push(`      <metadata key="name" value="${escapeXml(shellName)}"/>`);
-    ms.push(`      <metadata key="matrix" value="${IDENTITY}"/>`);
-    ms.push('      <metadata key="source_offset_x" value="0"/>');
-    ms.push('      <metadata key="source_offset_y" value="0"/>');
-    ms.push('      <metadata key="source_offset_z" value="0"/>');
-    ms.push('      <metadata key="extruder" value="5"/>');
-    ms.push(`      ${meshStat(shellBody.faceCount)}`);
-    ms.push("    </part>");
-    ms.push(
-      `    <part id="${SHELL_MODIFIER_PART_ID}" ` +
-        `subtype="${second.normal ? "normal_part" : "modifier_part"}">`,
-    );
-    ms.push(`      <metadata key="name" value="${escapeXml(second.name)}"/>`);
-    ms.push(`      <metadata key="matrix" value="${IDENTITY}"/>`);
-    ms.push('      <metadata key="source_offset_x" value="0"/>');
-    ms.push('      <metadata key="source_offset_y" value="0"/>');
-    ms.push('      <metadata key="source_offset_z" value="0"/>');
-    if (second.normal) ms.push('      <metadata key="extruder" value="5"/>');
-    else ms.push('      <metadata key="sparse_infill_density" value="100%"/>');
-    ms.push(`      ${meshStat(shellMod.faceCount)}`);
-    ms.push("    </part>");
+    ms.push(`    <metadata face_count="${faces}"/>`);
+    for (const part of shellParts) {
+      ms.push(`    <part id="${part.id}" subtype="${part.subtype}">`);
+      ms.push(`      <metadata key="name" value="${escapeXml(part.name)}"/>`);
+      ms.push(`      <metadata key="matrix" value="${IDENTITY}"/>`);
+      ms.push('      <metadata key="source_offset_x" value="0"/>');
+      ms.push('      <metadata key="source_offset_y" value="0"/>');
+      ms.push('      <metadata key="source_offset_z" value="0"/>');
+      // modifier 只是块改参数的虚体，给它派挤出机没有意义；实体件才要
+      if (part.subtype === "normal_part") ms.push('      <metadata key="extruder" value="5"/>');
+      else ms.push('      <metadata key="sparse_infill_density" value="100%"/>');
+      ms.push(`      ${meshStat(part.xml.faceCount)}`);
+      ms.push("    </part>");
+    }
     ms.push("  </object>");
   }
 
@@ -568,7 +582,10 @@ ${buildItems.join("\n")}
 
   ms.push(...plateBlock(1, PLATE1_NAME, "0.08mm Extra Fine @BBL X1C", PICTURE_OBJECT_ID, PICTURE_IDENTIFY_ID));
   if (hasShell) {
-    ms.push(...plateBlock(2, PLATE2_NAME, "0.2mm Standard @BBL X1C", SHELL_OBJECT_ID, SHELL_IDENTIFY_ID));
+    ms.push(
+      ...plateBlock(2, shell?.plateName ?? PLATE2_NAME, "0.2mm Standard @BBL X1C",
+        SHELL_OBJECT_ID, SHELL_IDENTIFY_ID),
+    );
   }
 
   ms.push("  <assemble>");
@@ -595,11 +612,10 @@ ${buildItems.join("\n")}
     { name: "3D/Objects/object_1.model", data: enc.encode(object1) },
   ];
 
-  if (hasShell && shellBody && shellMod) {
-    const shellObjects = [
-      await meshObjectXml(SHELL_BODY_PART_ID, shellName, shellBody),
-      await meshObjectXml(SHELL_MODIFIER_PART_ID, second.name, shellMod),
-    ].join("\n");
+  if (hasShell) {
+    const shellObjects = (
+      await Promise.all(shellParts.map((p) => meshObjectXml(p.id, p.name, p.xml)))
+    ).join("\n");
     files.push({ name: "3D/Objects/object_2.model", data: enc.encode(objectFileModel(shellObjects)) });
   }
 
@@ -631,8 +647,16 @@ ${buildItems.join("\n")}
       data: enc.encode(plateJson(pictureBbox, PICTURE_IDENTIFY_ID, pictureName, LAYER_HEIGHT)),
     });
   }
-  if (hasShell && shellBody?.bbox) {
-    const b = shellBody.bbox;
+  const shellBbox = shellParts.reduce<[number, number, number, number] | null>((acc, p) => {
+    if (!p.xml.bbox) return acc;
+    if (!acc) return [...p.xml.bbox] as [number, number, number, number];
+    return [
+      Math.min(acc[0], p.xml.bbox[0]), Math.min(acc[1], p.xml.bbox[1]),
+      Math.max(acc[2], p.xml.bbox[2]), Math.max(acc[3], p.xml.bbox[3]),
+    ];
+  }, null);
+  if (hasShell && shellBbox) {
+    const b = shellBbox;
     const shifted: [number, number, number, number] = [
       b[0] + plate2.tx, b[1] + plate2.ty, b[2] + plate2.tx, b[3] + plate2.ty,
     ];
@@ -644,6 +668,6 @@ ${buildItems.join("\n")}
 
   const data = await createZip(files);
   const triangles =
-    totalPictureFaces + (shellBody?.faceCount ?? 0) + (shellMod?.faceCount ?? 0);
+    totalPictureFaces + shellParts.reduce((t, p) => t + p.xml.faceCount, 0);
   return { data, triangles, bytes: data.length };
 }
