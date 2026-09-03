@@ -629,18 +629,21 @@ def plate_layout(
     *,
     bed: float = 256.0,
     gap: float = 3.0,
-    bias: tuple[float, float] = (3.0, 3.0),
+    keepout: tuple[float, float] = (28.0, 34.0),
 ) -> list[tuple[str, cq.Workplane]]:
     """壳子四件怎么摆在一个盘上。
 
-    不再手摆，也不用通用货架器 —— 直接把「每件转不转 90°」「先放谁」「一行放多宽」
-    这三样穷举一遍（四件以内，几百种组合，眨眼就完），挑**最长边最短**的那个。
-    最长边才是关键：屏蔽区在床的四边，整组越接近正方形，四周留的余量越均匀。
+    穷举「每件转不转 90°」「先放谁」「一行放多宽」，挑最长边最短的那个。之后再做
+    两件事，都是为了躲开热床前沿那两块屏蔽区：
 
-    另加一条：底盖如果塞得进前框的取景窗，就塞进去 —— 那块地方本来就是空的。
+      · **宽的行摆后面，窄的摆前面。** 前沿才是屏蔽区所在，让最窄的一行去靠前。
+      · **每行左右居中。** 行一居中，窄行的两个前角就空出来了 —— 整组还是 234 宽，
+        但前面那一行只有 157，左右各让出 38mm。
 
-    100×150 那档搜出来是 234 × 227.6（手摆的 244.3 × 218.1 最长边多 10mm），
-    四周各留 11mm 以上。整组再往右后方挪一点，躲开左前角那块屏蔽区。
+    光把整组居中是不够的：234 宽的组居中之后四边各剩 11mm，而屏蔽区比 11mm 深，
+    落在前排最外侧的那一件照样会踩进去。得让那个角上**没有零件**，不是让它离得远。
+
+    底盖如果塞得进前框的取景窗就塞进去 —— 那块地方本来就是空的。
     """
     if shapes is None:
         shapes = {name: fn() for name, fn in PARTS.items()}
@@ -654,6 +657,40 @@ def plate_layout(
 
     p = params()
     cw, ch = size(shapes["cover"])
+    kx, ky = keepout
+
+    def arrange(placed, total_w):
+        """按行重排：宽的行往后，每行左右居中。返回 (新的 placed, 总高)。"""
+        rows: dict[float, list] = {}
+        for item in placed:
+            rows.setdefault(round(item[2], 3), []).append(item)
+        packs = []
+        for items in rows.values():
+            w = max(x + w_ for _, x, _, w_, _ in items) - min(x for _, x, _, _, _ in items)
+            packs.append((w, max(h for *_, h in items), items))
+        packs.sort(key=lambda r: -r[0])          # 宽的排前面 = 摆到后面
+        out = []
+        y = 0.0
+        for w, h, items in packs:
+            x0 = min(it[1] for it in items)
+            dx = (total_w - w) / 2.0 - x0        # 这一行整体居中
+            for i, x, _, iw, ih in items:
+                out.append((i, x + dx, y, iw, ih))
+            y += h + gap
+        return out, y - gap
+
+    def clears_corners(placed, total_w, total_h):
+        """整组居中到床上之后，两个前角的屏蔽区里不能有零件。"""
+        ox = (bed - total_w) / 2.0
+        oy = (bed - total_h) / 2.0
+        for _, x, y, w, h in placed:
+            bx0, bx1 = ox + x, ox + x + w
+            by0 = oy + (total_h - (y + h))       # 组内 y 向下 → 床上 y 向后
+            if by0 >= ky:
+                continue
+            if bx0 < kx or bx1 > bed - kx:
+                return False
+        return True
 
     best = None
     for nest in (True, False):
@@ -686,33 +723,31 @@ def plate_layout(
                         x += w
                         total_w = max(total_w, x)
                         row_h = max(row_h, h)
-                    total_h = y + row_h
+                    placed, total_h = arrange(placed, total_w)
                     if max(total_w, total_h) > bed - 9.0:
+                        continue
+                    if not clears_corners(placed, total_w, total_h):
                         continue
                     key = (round(max(total_w, total_h), 2), round(total_w + total_h, 2))
                     if best is None or key < best[0]:
                         best = (key, total_w, total_h, nest, names, rots, placed)
 
-    if best is None:  # 兜底：单列摞起来，超了也让 3MF 出得来，由报警去说
+    if best is None:
+        print("  ⚠ 排不出既放得下、前角又空着的摆法 —— 这个规格得拆两盘")
         y = 0.0
         out = []
         for n, sh in shapes.items():
             w, h = size(sh)
             out.append((n, place(sh, 0.0, -y)))
             y += h + gap
-        print("  ⚠ 这个规格排不进一个盘")
         return out
 
     _, total_w, total_h, nest, names, rots, placed = best
-    bx, by = bias
     out: list[tuple[str, cq.Workplane]] = []
     for i, x, y, w, h in placed:
         shape = rot(shapes[names[i]], rots[i])
-        out.append(
-            (names[i], place(shape, bx + x + w / 2.0 - total_w / 2.0, by + total_h / 2.0 - (y + h / 2.0)))
-        )
+        out.append((names[i], place(shape, x + w / 2.0 - total_w / 2.0, total_h / 2.0 - (y + h / 2.0))))
     if nest:
-        # 和前框同心 —— 前框的包围盒中心就是取景窗中心
         fb = dict(out)["frame"].val().BoundingBox()
         out.append(
             ("cover", place(shapes["cover"], (fb.xmin + fb.xmax) / 2.0, (fb.ymin + fb.ymax) / 2.0))
@@ -771,7 +806,7 @@ def _plate_note() -> str:
     ys = [v for _, sh in items for v in (sh.val().BoundingBox().ymin, sh.val().BoundingBox().ymax)]
     return (
         f"整组 {max(xs) - min(xs):.1f} × {max(ys) - min(ys):.1f} mm"
-        f"（转向与次序穷举取最长边最短；底盖能塞进取景窗就塞）"
+        f"（穷举取最长边最短；宽的行摆后面、每行居中，让开前沿屏蔽区）"
     )
 
 
