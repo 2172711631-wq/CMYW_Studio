@@ -47,8 +47,8 @@ PART_LABELS = {
 def bake_one(art_w: float, art_h: float) -> tuple[str, int]:
     R.ART_W, R.ART_H = art_w, art_h
     R.WALL = 3.5  # 立牌用窄边框，和 --preset standee 同一个数
-    shapes = [(name, R.PARTS[name]()) for name in ("frame", "module", "base", "cover")]
-    packed = T.pack_plates(shapes)
+    shapes = {name: R.PARTS[name]() for name in ("frame", "module", "base", "cover")}
+    packed = [R.plate_layout(shapes)]
 
     parts = {}
     for name, shape in packed[0]:

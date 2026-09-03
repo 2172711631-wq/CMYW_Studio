@@ -40,9 +40,9 @@ import os
 import cadquery as cq
 
 try:  # 当包导入
-    from .threemf_out import pack_plates, write_bambu_3mf
+    from .threemf_out import place, write_bambu_3mf
 except ImportError:  # 当脚本直接跑
-    from threemf_out import pack_plates, write_bambu_3mf
+    from threemf_out import place, write_bambu_3mf
 
 # =============================================================================
 # 参数
@@ -200,7 +200,8 @@ def params() -> dict[str, float]:
         # 电池仓：插槽后方那一整片。前沿离插槽留 4mm 肉
         "bay_y0": GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + 4.0,
         "bay_y1": BASE_D - 4.0,
-        "bay_h": BASE_T - BAY_WALL - COVER_T - COVER_LIP,
+        # 仓底就是底盖沉槽的顶，中间不该再留一层 —— 留了就是把仓封死
+        "bay_h": BASE_T - BAY_WALL - COVER_T,
         "bay_w": (frame_w + 2.0 * BASE_MARGIN) - 8.0,
         "bay_d": (BASE_D - 4.0) - (GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + 4.0),
         "stand_h": BASE_T + (frame_h - GROOVE_DEPTH) * math.cos(math.radians(TILT)),
@@ -428,9 +429,15 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
     )
     base = base.cut(slot)
 
-    # 电池仓：从底面往上掏，顶上留 BAY_WALL
+    # 电池仓：从底面往上掏，顶上留 BAY_WALL。
+    #
+    # 仓底必须正好落在底盖沉槽的顶面（z = COVER_T）。以前写的是 COVER_T + COVER_LIP，
+    # 于是沉槽顶和仓底之间夹着一片 1.1mm 的实心，横跨 109 × 45 的仓口 —— 电池根本
+    # 塞不进去，而且底座是上表面朝下打的，这片实心在打印姿态里就是悬在仓上方
+    # 10mm 的一整块平顶，切片器只能往仓里灌支撑。
+    # 底盖靠的是四周那圈 COVER_LIP 宽的台肩，不是这一片。
     bay_x = p["base_w"] / 2.0 - 4.0
-    z_bay0 = COVER_T + COVER_LIP
+    z_bay0 = COVER_T
     z_bay1 = z_bay0 + p["bay_h"]
     base = base.cut(
         _box_xyz(-bay_x, bay_x, p["bay_y0"], p["bay_y1"], z_bay0, z_bay1)
@@ -608,6 +615,74 @@ PARTS = {
 }
 
 
+def plate_layout(
+    shapes: dict[str, cq.Workplane] | None = None, *, bed: float = 256.0, gap: float = 3.0
+) -> list[tuple[str, cq.Workplane]]:
+    """壳子四件怎么摆在一个盘上。
+
+    通用的货架排盘器把四件排成 232 × 244，两头都顶到床边，Bambu 直接报"太靠近
+    屏蔽区域"。这里改成按零件自己的形状摆，两个要点：
+
+      · **前框转 90°。** 157 × 107 横着放，才和底座并得成一排；竖着放这一排就
+        剩不下宽度了。
+      · **底盖塞进前框的取景窗里。** 那块地方本来就是空的，让底盖白占一份面积
+        不值。窗口装不下（小规格）时它自动退回去，排在第二排。
+
+    出来大约 244 × 218（100×150 那档），比原来矮了 26mm —— 屏蔽区在床的前后两头，
+    矮下来才是有用的。
+    """
+    if shapes is None:
+        shapes = {name: fn() for name, fn in PARTS.items()}
+
+    def rot90(w: cq.Workplane) -> cq.Workplane:
+        return w.rotate((0, 0, 0), (0, 0, 1), 90.0)
+
+    def size(w: cq.Workplane) -> tuple[float, float]:
+        bb = w.val().BoundingBox()
+        return bb.xlen, bb.ylen
+
+    frame = rot90(shapes["frame"])
+    base_ = rot90(shapes["base"])
+    module = rot90(shapes["module"])
+    cover = shapes["cover"]
+
+    fw, fh = size(frame)
+    bw, bh = size(base_)
+    mw, mh = size(module)
+    cw, ch = size(cover)
+
+    # 底盖能不能塞进取景窗：窗口跟着前框一起转了 90°，留 2mm 不贴边
+    p = params()
+    win_w, win_h = p["window_h"], p["window_w"]
+    nested = cw + 2.0 <= win_w and ch + 2.0 <= win_h
+
+    row1_h = max(fh, bh)
+    row2_w = mw if nested else mw + gap + cw
+    row2_h = mh if nested else max(mh, ch)
+    total_w = max(fw + gap + bw, row2_w)
+    total_h = row1_h + gap + row2_h
+
+    if max(total_w, total_h) > bed - 8.0:
+        print(f"  ⚠ 摆盘 {total_w:.1f} × {total_h:.1f} 超出可用范围，这个规格得拆两盘")
+
+    # 组内坐标（左上角为原点、y 向下）→ 床坐标
+    def put(shape: cq.Workplane, x: float, y: float, w: float, h: float) -> cq.Workplane:
+        return place(shape, x + w / 2.0 - total_w / 2.0, total_h / 2.0 - (y + h / 2.0))
+
+    out = [
+        ("frame", put(frame, 0.0, 0.0, fw, fh)),
+        ("base", put(base_, fw + gap, 0.0, bw, bh)),
+        ("module", put(module, 0.0, row1_h + gap, mw, mh)),
+    ]
+    if nested:
+        # 和前框同心 —— 前框的包围盒中心就是窗口中心
+        fb = out[0][1].val().BoundingBox()
+        out.append(("cover", place(cover, (fb.xmin + fb.xmax) / 2.0, (fb.ymin + fb.ymax) / 2.0)))
+    else:
+        out.append(("cover", put(cover, mw + gap, row1_h + gap, cw, ch)))
+    return out
+
+
 def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
     paths: dict[str, str] = {}
     shapes = {name: fn() for name, fn in PARTS.items()}
@@ -618,10 +693,9 @@ def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
         cq.exporters.export(shape, step)
         paths[f"{name}_stl"], paths[f"{name}_step"] = stl, step
 
-    # 壳子的四件实际去排：排得下就一盘，排不下才开第二盘。
+    # 壳子四件的摆盘见 plate_layout()。
     # 画片不在这儿 —— 它由网站按画幅单独出，壳只打一次、画片要打很多次。
-    plate_parts = [(name, shapes[name]) for name in ("frame", "module", "base", "cover")]
-    packed = pack_plates(plate_parts)
+    packed = [plate_layout(shapes)]
     plates = [
         (f"外壳 {i + 1}/{len(packed)}" if len(packed) > 1 else "外壳全套", items)
         for i, items in enumerate(packed)
@@ -652,6 +726,13 @@ def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
     cq.exporters.export(asm, paths["assembly_step"])
     cq.exporters.export(asm, paths["assembly_stl"], tolerance=tolerance, angularTolerance=0.2)
     return paths
+
+
+def _plate_note() -> str:
+    items = plate_layout()
+    xs = [v for _, sh in items for v in (sh.val().BoundingBox().xmin, sh.val().BoundingBox().xmax)]
+    ys = [v for _, sh in items for v in (sh.val().BoundingBox().ymin, sh.val().BoundingBox().ymax)]
+    return f"整组 {max(xs) - min(xs):.1f} × {max(ys) - min(ys):.1f} mm（前框转 90°，底盖尽量塞进取景窗）"
 
 
 def spec() -> list[tuple[str, str]]:
@@ -710,7 +791,7 @@ def spec() -> list[tuple[str, str]]:
             f"外面 {TOUCH_MARK_W:.0f}×{TOUCH_MARK_H:.0f} 浅坑指示。"
             f"**触摸区必须 100% 填充** —— 用 ringframe_touch_modifier 当修改器",
         ),
-        ("摆盘", "ringframe.3mf —— 壳子四件按实际尺寸排盘，排得下就一盘"),
+        ("摆盘", f"ringframe.3mf —— 一盘四件：{_plate_note()}"),
     ]
 
 
