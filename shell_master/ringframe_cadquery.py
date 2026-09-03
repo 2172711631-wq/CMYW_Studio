@@ -624,12 +624,22 @@ PARTS = {
 }
 
 
+# 整组在床上的偏移：往右、往后各挪一点，离前沿左边那块屏蔽区远些。
+#
+# 这只能是补刀，不是主刀。整组 234 宽、床 256，左右一共就 22mm 余量：
+# 居中是左右各 11，往右挪 3 就变成左 14 / 右 8，再挪右边比原来的左边还窄，
+# 等于把问题从一边搬到另一边。真正解决问题的是让前角本来就没有零件
+# （见 plate_layout 里的 clears_corners），偏移只是顺手再多要 3mm。
+PLATE_BIAS = (3.0, 3.0)
+
+
 def plate_layout(
     shapes: dict[str, cq.Workplane] | None = None,
     *,
     bed: float = 256.0,
     gap: float = 3.0,
     keepout: tuple[float, float] = (28.0, 34.0),
+    bias: tuple[float, float] = PLATE_BIAS,
 ) -> list[tuple[str, cq.Workplane]]:
     """壳子四件怎么摆在一个盘上。
 
@@ -680,9 +690,9 @@ def plate_layout(
         return out, y - gap
 
     def clears_corners(placed, total_w, total_h):
-        """整组居中到床上之后，两个前角的屏蔽区里不能有零件。"""
-        ox = (bed - total_w) / 2.0
-        oy = (bed - total_h) / 2.0
+        """整组摆到床上之后，两个前角的屏蔽区里不能有零件。"""
+        ox = (bed - total_w) / 2.0 + bias[0]
+        oy = (bed - total_h) / 2.0 + bias[1]
         for _, x, y, w, h in placed:
             bx0, bx1 = ox + x, ox + x + w
             by0 = oy + (total_h - (y + h))       # 组内 y 向下 → 床上 y 向后
@@ -743,10 +753,13 @@ def plate_layout(
         return out
 
     _, total_w, total_h, nest, names, rots, placed = best
+    bx, by = bias
     out: list[tuple[str, cq.Workplane]] = []
     for i, x, y, w, h in placed:
         shape = rot(shapes[names[i]], rots[i])
-        out.append((names[i], place(shape, x + w / 2.0 - total_w / 2.0, total_h / 2.0 - (y + h / 2.0))))
+        out.append(
+            (names[i], place(shape, bx + x + w / 2.0 - total_w / 2.0, by + total_h / 2.0 - (y + h / 2.0)))
+        )
     if nest:
         fb = dict(out)["frame"].val().BoundingBox()
         out.append(

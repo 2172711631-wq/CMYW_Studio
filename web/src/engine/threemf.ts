@@ -113,6 +113,9 @@ export interface Build3mfOptions {
     extraParts?: { name: string; mesh: Mesh }[];
     /** 第二个盘在切片器里的名字 */
     plateName?: string;
+    /** 整组在盘上的偏移 mm。这里是按整组包围盒居中的，居中之后再按这个挪 ——
+     *  热床前沿有屏蔽区，居中并不等于安全。 */
+    plateBias?: { x: number; y: number };
   } | null;
   shellColorHex?: string;
   pictureName?: string;
@@ -468,8 +471,8 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
           xml: meshToXml(m.mesh, -ob.cx, -ob.cy, -zc),
           subtype: m.subtype,
         })),
-        tx: PLATE2_TARGET_CENTER_X + (ob.cx - gb.cx),
-        ty: BED_CENTER + (ob.cy - gb.cy),
+        tx: PLATE2_TARGET_CENTER_X + (ob.cx - gb.cx) + (shell.plateBias?.x ?? 0),
+        ty: BED_CENTER + (ob.cy - gb.cy) + (shell.plateBias?.y ?? 0),
         tz: (ob.zmax - ob.zmin) / 2,
       };
     });

@@ -70,6 +70,9 @@ def bake_one(art_w: float, art_h: float) -> tuple[str, int]:
         "windowW": round(p["window_w"], 2),
         "windowH": round(p["window_h"], 2),
         "order": [name for name, _ in packed[0]],
+        # 网页端导出时会按整组包围盒重新居中，把这里的偏移抵消掉，
+        # 所以要原样带过去让它再加回来 —— 不然两边摆位对不上
+        "bias": list(R.PLATE_BIAS),
         "note": "由 shell_master/ringframe_cadquery.py 烘出；改参数后重跑 tools/bake_standee.py",
         "parts": parts,
     }

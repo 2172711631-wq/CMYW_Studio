@@ -144,6 +144,7 @@ async function loadBadge(diameter: number): Promise<BakedBadge> {
 
 interface BakedStandee {
   order: string[];
+  bias: { x: number; y: number };
   parts: Record<string, { label: string; vertices: Float64Array; indices: Uint32Array }>;
 }
 
@@ -160,6 +161,7 @@ async function loadStandee(w: number, h: number): Promise<BakedStandee> {
   }
   const raw = (await res.json()) as {
     order: string[];
+    bias?: [number, number];
     parts: Record<string, { label: string; vertices: number[]; indices: number[] }>;
   };
   const parts: BakedStandee["parts"] = {};
@@ -170,7 +172,11 @@ async function loadStandee(w: number, h: number): Promise<BakedStandee> {
       indices: Uint32Array.from(v.indices),
     };
   }
-  const baked = { order: raw.order, parts };
+  const baked = {
+    order: raw.order,
+    bias: { x: raw.bias?.[0] ?? 0, y: raw.bias?.[1] ?? 0 },
+    parts,
+  };
   standeeCache.set(key, baked);
   return baked;
 }
@@ -276,6 +282,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           .filter((k) => k !== "frame" && k !== "module")
           .map((k) => ({ name: pick(k).label, mesh: pick(k) })),
         plateName: "立牌外壳建议0.2mm层高打印",
+        plateBias: baked.bias,
       };
     } else if (req.badge) {
       // 吧唧外壳跑不了 CadQuery，是 tools/bake_badge.py 从同一个母本烘出来的，
