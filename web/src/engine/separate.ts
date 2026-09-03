@@ -65,6 +65,20 @@ export interface SeparateOptions {
    * 所以画面越"平"，这个值就该越低。
    */
   keepFloor?: number;
+  /**
+   * 抬浅层时只看这一色**自己的彩色度**，不算中性底（kBack）。默认 false =
+   * 老行为，Python 母本走的就是这一档。
+   *
+   * 为什么需要它：need = 自己的彩色度 + kBack，而 kBack 是给三色平摊的中性成分。
+   * 门槛压在 need 上，就会出现"这一色的彩色度是 0，全靠 kBack 顶过门槛，于是被
+   * 抬成整整一层"。一块饱和蓝里黄的彩色度正好是 0，keepFloor 降到 0.07 之后它
+   * 被抬出一层黄 —— 黄吸蓝，画面当场发绿。中性灰的细线也一样，会平白多一层品红
+   * 变成粉的。
+   *
+   * 把门槛改压在彩色度上，淡的彩色线照抬（它有自己的彩色度），
+   * 纯靠中性底顶上来的配角色不抬。
+   */
+  liftChromaOnly?: boolean;
   /** 白底层数，默认 4。 */
   minWhiteLayers?: number;
 }
@@ -93,6 +107,7 @@ function quantize(
   amount: number,
   keepMask: Uint8Array | null,
   keepFloor: number,
+  neutral: Float32Array | null,
 ): Int32Array {
   const n = need.length;
   const out = new Int32Array(n);
@@ -111,7 +126,9 @@ function quantize(
     }
 
     // 仅在有彩色度处把浅色抬过取整门槛，避免中性灰被三色薄雾铺满
-    const wantsLift = need[i] >= floor32 && x < 0.5 && (keepMask === null || keepMask[i] === 1);
+    // 拿去和门槛比的量：默认是 need 本身，开了 liftChromaOnly 就先把中性底扣掉
+    const weight = neutral === null ? need[i] : f(need[i] - neutral[i]);
+    const wantsLift = weight >= floor32 && x < 0.5 && (keepMask === null || keepMask[i] === 1);
     if (wantsLift) x = lifted;
 
     const r = rintHalfToEven(x);
@@ -141,6 +158,7 @@ export function separateCMYW(
   const dither = options.dither ?? true;
   const ditherAmount = options.ditherAmount ?? LAYER_DITHER_AMT;
   const keepFloor = options.keepFloor ?? LAYER_KEEP_FLOOR;
+  const liftChromaOnly = options.liftChromaOnly ?? false;
   const whiteLayers = options.minWhiteLayers ?? MIN_WHITE_LAYERS;
 
   // 白底在每个通道贡献的固定密度。Python 侧此处是 float64 运算。
@@ -151,6 +169,8 @@ export function separateCMYW(
   const needM = new Float32Array(count);
   const needY = new Float32Array(count);
   const keepMask = new Uint8Array(count);
+  // 不开时连数组都不分配 —— 默认行为一字未动
+  const neutral = liftChromaOnly ? new Float32Array(count) : null;
 
   for (let i = 0; i < count; i += 1) {
     const p = i * 3;
@@ -192,6 +212,7 @@ export function separateCMYW(
 
     // 只有真正带彩色度的像素才允许抬浅层
     keepMask[i] = f(f(cChr + mChr) + yChr) >= f(keepFloor) ? 1 : 0;
+    if (neutral !== null) neutral[i] = kBack;
   }
 
   const W = new Int32Array(count);
@@ -199,9 +220,9 @@ export function separateCMYW(
 
   return {
     W,
-    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor),
-    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor),
-    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor),
+    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor, neutral),
+    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor, neutral),
+    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor, neutral),
     gridW,
     gridH,
   };

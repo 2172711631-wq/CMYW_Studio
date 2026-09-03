@@ -311,6 +311,16 @@ function keepFloorFor(flat: number): number {
   return LAYER_KEEP_FLOOR * (1 - 0.8 * artScore(flat));
 }
 
+/** 门槛一降就必须同时打开它，否则降下来的门槛会被中性底顶穿。
+ *
+ * need = 这一色自己的彩色度 + kBack（三色平摊的中性成分）。门槛压在 need 上时，
+ * 彩色度为 0 的通道也能靠 kBack 顶过去，被抬成整整一层：饱和蓝里多一层黄就发绿，
+ * 中性灰细线里多一层品红就发粉。而这两种情况**只在门槛降下来之后才够得着**，
+ * 所以这两件事是同一个开关的两半，不该分开。 */
+function liftChromaOnlyFor(flat: number): boolean {
+  return keepFloorFor(flat) < LAYER_KEEP_FLOOR;
+}
+
 /** 网格化前的中值滤波：线稿要关掉，否则 1–2 像素宽的笔画会被抹平。
  *  代价是矩形变多、三角形涨 —— 面板上的"三角面"读数就是这个成本。 */
 function mergeFilterFor(flat: number): number {
@@ -523,6 +533,7 @@ function requestPreview(): void {
     cornerRadiusMm: maskRadiusMm(longest),
     ditherAmount: ditherAmountFor(lastFlatness),
     keepFloor: keepFloorFor(lastFlatness),
+    liftChromaOnly: liftChromaOnlyFor(lastFlatness),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
@@ -622,6 +633,7 @@ function startExport(): void {
     standee: shape === "standee" && els.withShell.checked ? standeeMm() : null,
     ditherAmount: ditherAmountFor(lastFlatness),
     keepFloor: keepFloorFor(lastFlatness),
+    liftChromaOnly: liftChromaOnlyFor(lastFlatness),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
