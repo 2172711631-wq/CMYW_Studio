@@ -69,6 +69,9 @@ def bake_one(art_w: float, art_h: float) -> tuple[str, int]:
         "depth": round(p["depth"], 2),
         "windowW": round(p["window_w"], 2),
         "windowH": round(p["window_h"], 2),
+        # 画片实际该印多大 —— 比插口小一点才推得进去，网站按这个出图
+        "artPrintW": round(p["art_print_w"], 2),
+        "artPrintH": round(p["art_print_h"], 2),
         "order": [name for name, _ in packed[0]],
         # 网页端导出时会按整组包围盒重新居中，把这里的偏移抵消掉，
         # 所以要原样带过去让它再加回来 —— 不然两边摆位对不上

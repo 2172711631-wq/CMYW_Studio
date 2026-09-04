@@ -83,7 +83,12 @@ BEZEL_T = 1.6         # 正面压边厚
 BEZEL_LAP = 4.0       # 正面四边各压住画片多少。压边吃掉的是画片，尽量小
 BEZEL_CHAMFER = 1.0   # 压边背面台阶根部的 45° 倒角，会被钳到 BEZEL_T - 0.6
 WALL = 7.0            # 画片槽外侧的结构壁厚。看到的边框 = BEZEL_LAP + WALL
-FIT = 0.3             # 画片 / 扩散片的横向公差
+FIT = 0.3             # 画片槽 / 扩散片槽的横向公差
+# 画片实际印多大：比灯板插口再小一点，能**直着推进去**，不用掰。
+# 以前画片是按画片槽做的，比插口每边大 1.5mm，只能斜着掰 —— 越厚越掰不动，
+# 1.2mm 就是掰得动的极限。缩到插口以内之后，多厚都进得去。
+# 代价是白边窄一圈：可见画面一点没少，少的是本来就被压边盖住的那一圈。
+ART_INSERT_FIT = 0.5  # 画片比插口小多少（总量）
 FRAME_R = 6.0         # 外圆角。必须大于 BACK_BEVEL，见 build_frame 里的钳位
 BACK_BEVEL = 5.0      # 背面外沿的 45° 斜切，让侧面看着薄
 
@@ -165,6 +170,15 @@ TOUCH_PAD_H = 10.0    # 沿 Z
 TOUCH_PAD_OUT = 1.2   # 凸出侧壁多少
 TOUCH_PAD_R = 3.0     # 凸块圆角，别硌手
 BAY_WALL = 2.5        # 电池仓顶壁（也就是底座上表面那层）
+# 电池仓四周的壁厚。原来写死 4.0，比顶壁 2.5 厚不少 —— 壁厚不匀不好看，
+# 而且 Type-C 那面 4mm 太厚：插头的包胶还没进去就顶到壳了，插不到位。
+BASE_WALL = 3.0
+# Type-C 口那一面单独再薄一点：外面挖个沉台，只留这么厚。
+# 插头包胶那一圈能沉进去，才插得到底。
+USB_FACE_T = 1.5
+USB_BORE_W = 14.0     # 沉台开多大（按 Type-C 插头包胶的常见外形留的）
+USB_BORE_H = 8.0
+USB_BORE_R = 2.0
 COVER_T = 1.6         # 底盖厚
 COVER_FIT = 0.3
 COVER_LIP = 1.2       # 底盖沉入量，装上后与底面齐平
@@ -213,6 +227,10 @@ def params() -> dict[str, float]:
         "cav_h": cav_h,
         # 灯板腔口比取景窗宽出多少 —— 小于 0 就说明盘壁会在画面边上投影
         "lit_margin": (cav_w - window_w) / 2.0,
+        # 画片实际印多大（网站按这个出图），以及压边还能压住它多少
+        "art_print_w": socket_w - ART_INSERT_FIT,
+        "art_print_h": socket_h - ART_INSERT_FIT,
+        "bezel_hold": ((socket_w - ART_INSERT_FIT) - window_w) / 2.0,
         # 灯条平贴盘底，凸进腔里的只有它自己的厚度；剩下的全是混光距离
         "mix_gap": CAVITY_D - LED_T,
         "led_run": cav_w - 8.0,
@@ -224,7 +242,7 @@ def params() -> dict[str, float]:
             0.0
             if abs(USB_X) < 1e-9
             else (1.0 if USB_X > 0 else -1.0)
-            * (((frame_w + 2.0 * BASE_MARGIN) / 2.0 - 4.0) - PCB_W / 2.0 - 2.0)
+            * (((frame_w + 2.0 * BASE_MARGIN) / 2.0 - BASE_WALL) - PCB_W / 2.0 - 2.0)
         ),
         # 触摸区在底座侧壁上，壁厚由电池仓的让位决定
         "side_wall": ((frame_w + 2.0 * BASE_MARGIN) / 2.0) - ((frame_w + 2.0 * BASE_MARGIN) / 2.0 - 4.0),
@@ -236,12 +254,12 @@ def params() -> dict[str, float]:
         # 插槽打穿到底盖顶面，所以插深由板厚和底盖厚定，不再是一个独立参数
         "groove_depth": BASE_T - COVER_T,
         # 电池仓：插槽后方那一整片。前沿离插槽留 4mm 肉
-        "bay_y0": GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + 4.0,
-        "bay_y1": BASE_D - 4.0,
+        "bay_y0": GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + BASE_WALL,
+        "bay_y1": BASE_D - BASE_WALL,
         # 仓底就是底盖沉槽的顶，中间不该再留一层 —— 留了就是把仓封死
         "bay_h": BASE_T - BAY_WALL - COVER_T,
-        "bay_w": (frame_w + 2.0 * BASE_MARGIN) - 8.0,
-        "bay_d": (BASE_D - 4.0) - (GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + 4.0),
+        "bay_w": (frame_w + 2.0 * BASE_MARGIN) - 2.0 * BASE_WALL,
+        "bay_d": (BASE_D - BASE_WALL) - (GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + BASE_WALL),
         "stand_h": BASE_T + (frame_h - (BASE_T - COVER_T)) * math.cos(math.radians(TILT)),
         # 顶端能晃多少：槽里的间隙被画高放大了这么多倍
         "sway": (frame_h - (BASE_T - COVER_T)) * (GROOVE_FIT / (BASE_T - COVER_T)),
@@ -494,7 +512,7 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
     # 塞不进去，而且底座是上表面朝下打的，这片实心在打印姿态里就是悬在仓上方
     # 10mm 的一整块平顶，切片器只能往仓里灌支撑。
     # 底盖靠的是四周那圈 COVER_LIP 宽的台肩，不是这一片。
-    bay_x = p["base_w"] / 2.0 - 4.0
+    bay_x = p["base_w"] / 2.0 - BASE_WALL
     z_bay0 = COVER_T
     z_bay1 = z_bay0 + p["bay_h"]
     base = base.cut(
@@ -549,6 +567,18 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
         )
     )
 
+    # Type-C 外面挖个沉台：这一面只留 USB_FACE_T，插头的包胶才沉得进去。
+    # 不挖的话要穿 BASE_WALL 整道壁，插头顶着壳，插不到底。
+    if BASE_WALL - USB_FACE_T > 0.05:
+        base = base.cut(
+            _round_slot(
+                USB_BORE_W, USB_BORE_H, USB_BORE_R,
+                BASE_D - (BASE_WALL - USB_FACE_T), BASE_D + 1.0,
+                cx=usb_cx,
+                cz=z_bay0 + USB_Z + USB_H / 2.0,
+            )
+        )
+
     # 侧面触摸：只在外面凸一块指示，内壁不动 —— 铜箔要贴在平的内壁上
     sx = 1.0 if TOUCH_SIDE >= 0 else -1.0
     tx = p["base_w"] / 2.0
@@ -576,7 +606,7 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
 def build_cover() -> cq.Workplane:
     """电池仓底盖。平躺打，卡扣朝上。"""
     p = params()
-    bay_x = p["base_w"] / 2.0 - 4.0
+    bay_x = p["base_w"] / 2.0 - BASE_WALL
     w = 2.0 * (bay_x + COVER_LIP) - COVER_FIT
     d = (BASE_D - 2.0 * COVER_EDGE) - COVER_FIT
     cover = (
@@ -614,7 +644,7 @@ def build_touch_solid() -> cq.Workplane:
     pad = 3.0  # 四周多罩一点，别让修改器边界正好压在触摸区边上
     x0 = sx * tx - (0.0 if sx > 0 else TOUCH_PAD_OUT + 1.0)
     x1 = sx * tx + (TOUCH_PAD_OUT + 1.0 if sx > 0 else 0.0)
-    inner = sx * (tx - 4.5)   # 罩穿整道侧壁：铜箔贴内壁，中间不能有稀疏填充
+    inner = sx * (tx - BASE_WALL - 1.5)   # 罩穿整道侧壁：铜箔贴内壁，中间不能有稀疏填充
     return _box_xyz(
         min(x0, x1, inner), max(x0, x1, inner),
         ty - TOUCH_PAD_W / 2.0 - pad, ty + TOUCH_PAD_W / 2.0 + pad,
@@ -899,7 +929,16 @@ def spec() -> list[tuple[str, str]]:
         ),
         ("底盖", f'{p["base_w"] - 5.6 - COVER_FIT:.1f} × {BASE_D - 2 * COVER_EDGE - COVER_FIT:.1f} '
                  f"× {COVER_T} mm 整块底板；插槽的底就是它"),
-        ("画片", f"{ART_W:.0f} × {ART_H:.0f} mm，厚 ≤1.76（22 层 × 0.08）"),
+        (
+            "画片",
+            f'实印 {p["art_print_w"]:.1f} × {p["art_print_h"]:.1f} mm（比插口小 {ART_INSERT_FIT}，'
+            f"直着推进去，不用掰)，厚 ≤1.76（22 层 × 0.08）",
+        ),
+        (
+            "压边压住",
+            f'每边 {p["bezel_hold"]:.2f} mm'
+            + ("" if p["bezel_hold"] >= 1.5 else "  ← **太少，画片边缘会从正面露出来**"),
+        ),
         (
             "画片可见",
             f'{p["window_w"]:.1f} × {p["window_h"]:.1f} mm，'
@@ -918,6 +957,7 @@ def spec() -> list[tuple[str, str]]:
             f"盘壁才让得动 —— 不开豁口的闭合盒压不下去，等于没有卡扣",
         ),
         ("背板", f"盘底 {MODULE_BACK_T} 厚，画片的后靠就是它"),
+        ("底座壁厚", f"四周 {BASE_WALL}、顶 {BAY_WALL}、底盖 {COVER_T}（Type-C 那面 {USB_FACE_T}）"),
         (
             "直射盲区",
             f'中间 {p["dark_w"]:.0f} × {p["dark_h"]:.0f} mm 没有直射光，'
@@ -939,7 +979,8 @@ def spec() -> list[tuple[str, str]]:
             "电路板",
             f'{PCB_W:.0f} × {PCB_D:.0f} × {PCB_H:.0f} mm 的位；'
             f"背面 Type-C {USB_W:.1f}×{USB_H:.1f}（R{USB_R}，同灯箱），"
-            f"口底离仓底 {USB_Z} mm、{'靠左' if USB_X < 0 else ('靠右' if USB_X > 0 else '居中')}",
+            f"口底离仓底 {USB_Z} mm、{'靠左' if USB_X < 0 else ('靠右' if USB_X > 0 else '居中')}；"
+            f"外面挖 {USB_BORE_W:.0f}×{USB_BORE_H:.0f} 沉台，那一面只剩 {USB_FACE_T} 厚，插头才插得到底",
         ),
         (
             "侧面触摸",

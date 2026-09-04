@@ -315,31 +315,45 @@ function mmPerPx(): number {
  *
  * 数字从烘好的壳里取，不在这边另写一份 —— 压边宽度是 CAD 母本的参数，
  * 抄一份在前端，改了母本这边就悄悄对不上了。 */
-const standeeWindow = new Map<string, { w: number; h: number }>();
+interface StandeeFit {
+  /** 取景窗：正面真正看得见的一块 */
+  winW: number;
+  winH: number;
+  /** 画片实际该印多大 —— 比灯板插口小一点，才能直着推进去 */
+  printW: number;
+  printH: number;
+}
+const standeeFit = new Map<string, StandeeFit>();
 
-async function loadStandeeWindow(w: number, h: number): Promise<{ w: number; h: number } | null> {
+async function loadStandeeFit(w: number, h: number): Promise<StandeeFit | null> {
   const key = `${w}x${h}`;
-  const hit = standeeWindow.get(key);
+  const hit = standeeFit.get(key);
   if (hit) return hit;
   try {
     const res = await fetch(`/standee/${key}.json`);
     if (!res.ok) return null;
-    const raw = (await res.json()) as { windowW: number; windowH: number };
-    const win = { w: raw.windowW, h: raw.windowH };
-    standeeWindow.set(key, win);
-    return win;
+    const raw = (await res.json()) as {
+      windowW: number; windowH: number; artPrintW: number; artPrintH: number;
+    };
+    const fit = { winW: raw.windowW, winH: raw.windowH, printW: raw.artPrintW, printH: raw.artPrintH };
+    standeeFit.set(key, fit);
+    return fit;
   } catch {
-    return null;   // 取不到就当没有压边，画满 —— 不该因为一次网络失败就不能用
+    return null;   // 取不到就按名义尺寸画满 —— 不该因为一次网络失败就不能用
   }
 }
 
-/** 画片四周被压边盖住的宽度（mm）。非立牌返回 0。 */
-function bezelMm(): number {
-  if (shape !== "standee") return 0;
+function currentFit(): StandeeFit | null {
+  if (shape !== "standee") return null;
   const { w, h } = standeeMm();
-  const win = standeeWindow.get(`${w}x${h}`);
-  if (!win) return 0;
-  return Math.max(0, Math.min((w - win.w) / 2, (h - win.h) / 2));
+  return standeeFit.get(`${w}x${h}`) ?? null;
+}
+
+/** 画片四周被压边盖住的宽度（mm）。非立牌、或还没取到壳的尺寸时返回 0。 */
+function bezelMm(): number {
+  const fit = currentFit();
+  if (!fit) return 0;
+  return Math.max(0, Math.min((fit.printW - fit.winW) / 2, (fit.printH - fit.winH) / 2));
 }
 
 /** 立牌选中的画幅。壳子按同一个数去 /standee/ 取烘好的网格，尺寸不会各走各的。 */
@@ -355,6 +369,10 @@ function artSizeMm(): { w: number; h: number } {
     return { w: d, h: d };
   }
   if (shape === "standee") {
+    // 下拉里写的是产品规格（100×150），实际印出来要比灯板插口小一点才推得进去。
+    // 取不到壳的尺寸时退回名义值 —— 差的那 3mm 是被压边盖住的白边，看不见。
+    const fit = currentFit();
+    if (fit) return { w: fit.printW, h: fit.printH };
     const [w, h] = els.standeeSize.value.split("x").map(Number);
     return { w, h };
   }
@@ -808,8 +826,8 @@ els.standeeSize.addEventListener("change", () => {
 async function ensureStandeeWindow(): Promise<void> {
   if (shape !== "standee") return;
   const { w, h } = standeeMm();
-  if (standeeWindow.has(`${w}x${h}`)) return;
-  if (await loadStandeeWindow(w, h)) {
+  if (standeeFit.has(`${w}x${h}`)) return;
+  if (await loadStandeeFit(w, h)) {
     if (source) {
       drawCrop();
       requestPreview();
