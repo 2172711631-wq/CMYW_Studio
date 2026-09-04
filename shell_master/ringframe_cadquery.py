@@ -169,6 +169,10 @@ TOUCH_PAD_W = 26.0    # 外凸指示块，沿 Y
 TOUCH_PAD_H = 10.0    # 沿 Z
 TOUCH_PAD_OUT = 1.2   # 凸出侧壁多少
 TOUCH_PAD_R = 3.0     # 凸块圆角，别硌手
+# 凸起做成**空心环**，不是实心块。实心块正好压在感应区上，手指到内壁的路径
+# 从 3.0 变成 4.2 —— 本来就是要让它薄一点，加个实心块等于反着来。
+# 环只在四周凸，中间那一块还是原壁厚，摸得到位置又不增加厚度。
+TOUCH_PAD_RING = 2.5  # 环的宽度；0 = 退回实心块
 BAY_WALL = 2.5        # 电池仓顶壁（也就是底座上表面那层）
 # 电池仓四周的壁厚。原来写死 4.0，比顶壁 2.5 厚不少 —— 壁厚不匀不好看，
 # 而且 Type-C 那面 4mm 太厚：插头的包胶还没进去就顶到壳了，插不到位。
@@ -585,15 +589,25 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
     ty = (p["bay_y0"] + p["bay_y1"]) / 2.0
     tz = z_bay0 + p["bay_h"] / 2.0
     if TOUCH_PAD_OUT > 1e-4:
-        pad = (
-            cq.Workplane("XY")
-            .box(TOUCH_PAD_OUT + 0.6, TOUCH_PAD_W, TOUCH_PAD_H, centered=(False, True, True))
-            .translate((sx * tx - (0.6 if sx > 0 else TOUCH_PAD_OUT), ty, tz))
-        )
-        try:
-            pad = pad.edges("|X").fillet(TOUCH_PAD_R)
-        except Exception:  # noqa: BLE001
-            pass
+        def _pad(w: float, h: float, r: float) -> cq.Workplane:
+            blk = (
+                cq.Workplane("XY")
+                .box(TOUCH_PAD_OUT + 0.6, w, h, centered=(False, True, True))
+                .translate((sx * tx - (0.6 if sx > 0 else TOUCH_PAD_OUT), ty, tz))
+            )
+            if r > 1e-4:
+                try:
+                    blk = blk.edges("|X").fillet(min(r, min(w, h) / 2.0 - 0.01))
+                except Exception:  # noqa: BLE001
+                    pass
+            return blk
+
+        pad = _pad(TOUCH_PAD_W, TOUCH_PAD_H, TOUCH_PAD_R)
+        if TOUCH_PAD_RING > 1e-4:
+            iw = TOUCH_PAD_W - 2.0 * TOUCH_PAD_RING
+            ih = TOUCH_PAD_H - 2.0 * TOUCH_PAD_RING
+            if iw > 1.0 and ih > 1.0:
+                pad = pad.cut(_pad(iw, ih, max(0.0, TOUCH_PAD_R - TOUCH_PAD_RING)))
         base = base.union(pad)
 
     if print_orientation:
@@ -728,7 +742,8 @@ def plate_layout(
     gap: float = 3.0,
     keepout: tuple[float, float] = (28.0, 34.0),
     bias: tuple[float, float] = PLATE_BIAS,
-) -> list[tuple[str, cq.Workplane]]:
+    attach: dict[str, list[tuple[str, cq.Workplane]]] | None = None,
+) -> list:
     """壳子四件怎么摆在一个盘上。
 
     穷举「每件转不转 90°」「先放谁」「一行放多宽」，挑最长边最短的那个。之后再做
@@ -745,6 +760,7 @@ def plate_layout(
     """
     if shapes is None:
         shapes = {name: fn() for name, fn in PARTS.items()}
+    attach = attach or {}
 
     def size(w: cq.Workplane) -> tuple[float, float]:
         bb = w.val().BoundingBox()
@@ -842,16 +858,35 @@ def plate_layout(
 
     _, total_w, total_h, nest, names, rots, placed = best
     bx, by = bias
-    out: list[tuple[str, cq.Workplane]] = []
+    out: list = []
+    frame_box = None
     for i, x, y, w, h in placed:
-        shape = rot(shapes[names[i]], rots[i])
+        name = names[i]
+        shape = rot(shapes[name], rots[i])
+        bb = shape.val().BoundingBox()
+        tx = (bx + x + w / 2.0 - total_w / 2.0) - (bb.xmin + bb.xmax) / 2.0
+        ty = (by + total_h / 2.0 - (y + h / 2.0)) - (bb.ymin + bb.ymax) / 2.0
+        moved = shape.translate((tx, ty, 0.0))
+        if name == "frame":
+            frame_box = moved.val().BoundingBox()
+        # 附件（比如触摸区的修改器）必须走**同一套**转向 + 平移。
+        # 只跟平移不跟转向的话，零件转了 90° 修改器还留在原地，罩到零件外面去 ——
+        # 而这种错切片器不报，只是静静地不生效。
+        mods = [
+            (mname, rot(mshape, rots[i]).translate((tx, ty, 0.0)))
+            for mname, mshape in attach.get(name, [])
+        ]
+        out.append((name, moved, mods) if mods else (name, moved))
+    if nest and frame_box is not None:
         out.append(
-            (names[i], place(shape, bx + x + w / 2.0 - total_w / 2.0, by + total_h / 2.0 - (y + h / 2.0)))
-        )
-    if nest:
-        fb = dict(out)["frame"].val().BoundingBox()
-        out.append(
-            ("cover", place(shapes["cover"], (fb.xmin + fb.xmax) / 2.0, (fb.ymin + fb.ymax) / 2.0))
+            (
+                "cover",
+                place(
+                    shapes["cover"],
+                    (frame_box.xmin + frame_box.xmax) / 2.0,
+                    (frame_box.ymin + frame_box.ymax) / 2.0,
+                ),
+            )
         )
     return out
 
@@ -868,7 +903,17 @@ def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
 
     # 壳子四件的摆盘见 plate_layout()。
     # 画片不在这儿 —— 它由网站按画幅单独出，壳只打一次、画片要打很多次。
-    packed = [plate_layout(shapes)]
+    # 触摸区的实心修改器挂在底座对象上，不再让人手动加载一个 STL。
+    # 修改器必须和它要修改的本体同对象 —— 单独摆一个对象修改不到任何东西，
+    # 灯箱那边的顶壁实心也是这么挂的。
+    #
+    # 先跟着底座翻成打印姿态；排盘那一步的转向和平移由 plate_layout 一并施加。
+    touch = (
+        build_touch_solid()
+        .rotate((0, 0, 0), (1, 0, 0), 180)
+        .translate((0.0, BASE_D, BASE_T))
+    )
+    packed = [plate_layout(shapes, attach={"base": [("触摸区实心", touch)]})]
     plates = [
         (f"外壳 {i + 1}/{len(packed)}" if len(packed) > 1 else "外壳全套", items)
         for i, items in enumerate(packed)
@@ -880,12 +925,13 @@ def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
     # 再出一份"四件摊平"的 STEP：装配体适合看，但要改尺寸、加特征的时候
     # 四件叠在一起没法下手。这一份就是盘上那个摆位，一个文件拖进 CAD 就能改。
     flat = cq.Workplane("XY")
-    for _, shape in packed[0]:
-        flat = flat.add(shape)
+    for entry in packed[0]:
+        flat = flat.add(entry[1])   # 条目可能带修改器，只取本体
     paths["parts_step"] = os.path.join(out_dir, "ringframe_parts.step")
     cq.exporters.export(flat, paths["parts_step"])
 
-    # 触摸修改器：单独一件，不进盘（它不是要打的东西）
+    # 触摸修改器也单独出一份：3MF 里已经挂在底座上了，这份是留给
+    # 手动装配 / 换切片软件的时候用的
     touch = build_touch_solid()
     paths["touch_step"] = os.path.join(out_dir, "ringframe_touch_modifier.step")
     paths["touch_stl"] = os.path.join(out_dir, "ringframe_touch_modifier.stl")
@@ -985,8 +1031,9 @@ def spec() -> list[tuple[str, str]]:
         (
             "侧面触摸",
             f"{'右' if TOUCH_SIDE >= 0 else '左'}侧壁，内壁保持平的（铜箔贴内壁）；"
-            f"外面凸 {TOUCH_PAD_W:.0f}×{TOUCH_PAD_H:.0f}×{TOUCH_PAD_OUT:.1f} 指示块。"
-            f"感应要穿整道 4mm 侧壁，**触摸区必须 100% 填充** —— "
+            f"外面凸一圈 {TOUCH_PAD_W:.0f}×{TOUCH_PAD_H:.0f} 的环（宽 {TOUCH_PAD_RING}、高 {TOUCH_PAD_OUT}），"
+            f"环中间不加厚，手指到内壁还是 {BASE_WALL} mm。"
+            f"**触摸区必须 100% 填充** —— "
             f"用 ringframe_touch_modifier 当修改器，这步不能省",
         ),
         ("摆盘", f"ringframe.3mf —— 一盘四件：{_plate_note()}"),

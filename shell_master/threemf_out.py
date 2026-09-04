@@ -141,7 +141,7 @@ def write_3mf(
 
 def write_bambu_3mf(
     path: str,
-    plates: list[tuple[str, list[tuple[str, cq.Workplane]]]],
+    plates: list[tuple[str, list]],
     *,
     tol: float = 0.05,
     ang: float = 0.2,
@@ -151,6 +151,11 @@ def write_bambu_3mf(
     盘是靠 Metadata/model_settings.config 里的 <plate> 块把 model_instance 绑到
     plater_id 上的；3dmodel.model 里再把第二盘整体挪到 x=440 那一列
     （沿用 bambu_export.py 里已经验证过的摆位）。
+
+    零件写成 (名字, 形体) 就是一件普通实体；写成 (名字, 形体, [(名字, 形体), …])
+    时后面那串是**修改器**，和本体同属一个对象、跟着本体一起走。修改器必须和
+    它要修改的本体同对象 —— 单独摆一个对象是修改不到任何东西的，
+    这也是灯箱那边顶壁实心的做法。
     """
     nl = chr(10)
     plate_centers = [(BED / 2.0, BED / 2.0), (440.0, BED / 2.0)]
@@ -159,45 +164,75 @@ def write_bambu_3mf(
     cfg: list[str] = []
     plate_blocks: list[str] = []
     oid = 0
+
+    def mesh_xml(oid_: int, name: str, verts, tris, ox: float, oy: float) -> str:
+        vx = "".join(
+            f'<vertex x="{x - ox:.4f}" y="{y - oy:.4f}" z="{z:.4f}"/>' for x, y, z in verts
+        )
+        tx = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in tris)
+        return (
+            f'<object id="{oid_}" name="{name}" type="model">'
+            f"<mesh><vertices>{vx}</vertices><triangles>{tx}</triangles></mesh></object>"
+        )
+
     for pi, (plate_name, parts) in enumerate(plates):
         cx, cy = plate_centers[min(pi, len(plate_centers) - 1)]
         inst: list[str] = []
-        for name, shape in parts:
+        for entry in parts:
+            name, shape = entry[0], entry[1]
+            mods = list(entry[2]) if len(entry) > 2 and entry[2] else []
+
+            meshes = [(name, mesh_of(shape, tol, ang), "normal_part")]
+            for mname, mshape in mods:
+                meshes.append((mname, mesh_of(mshape, tol, ang), "modifier_part"))
+
+            # 本体和修改器要按**并集**居中，各自居中的话相对位置就散了
+            all_x = [v[0] for _, (vs, _), _ in meshes for v in vs]
+            all_y = [v[1] for _, (vs, _), _ in meshes for v in vs]
+            ox = (min(all_x) + max(all_x)) / 2.0
+            oy = (min(all_y) + max(all_y)) / 2.0
+
+            part_ids = []
+            comp_lines = []
+            for mname, (vs, ts), subtype in meshes:
+                oid += 1
+                part_ids.append((oid, mname, subtype, len(ts)))
+                objs.append(mesh_xml(oid, mname, vs, ts, ox, oy))
+                comp_lines.append(
+                    f'    <component objectid="{oid}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>'
+                )
             oid += 1
-            verts, tris = mesh_of(shape, tol, ang)
-            xs = [v[0] for v in verts]
-            ys = [v[1] for v in verts]
-            ox = (min(xs) + max(xs)) / 2.0
-            oy = (min(ys) + max(ys)) / 2.0
-            vx = "".join(
-                f'<vertex x="{x - ox:.4f}" y="{y - oy:.4f}" z="{z:.4f}"/>'
-                for x, y, z in verts
-            )
-            tx = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in tris)
+            container = oid
             objs.append(
-                f'<object id="{oid}" name="{name}" type="model">'
-                f"<mesh><vertices>{vx}</vertices><triangles>{tx}</triangles></mesh></object>"
+                f'<object id="{container}" name="{name}" type="model"><components>'
+                + "".join(comp_lines)
+                + "</components></object>"
             )
             items.append(
-                f'<item objectid="{oid}" transform="1 0 0 0 1 0 0 0 1 '
+                f'<item objectid="{container}" transform="1 0 0 0 1 0 0 0 1 '
                 f'{cx + ox:.4f} {cy + oy:.4f} 0"/>'
             )
-            cfg.extend(
-                [
-                    f'  <object id="{oid}">',
-                    f'    <metadata key="name" value="{name}"/>',
-                    '    <metadata key="extruder" value="1"/>',
-                    f'    <part id="{oid}" subtype="normal_part">',
-                    f'      <metadata key="name" value="{name}"/>',
-                    '      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>',
-                    "    </part>",
-                    "  </object>",
-                ]
-            )
+
+            cfg.append(f'  <object id="{container}">')
+            cfg.append(f'    <metadata key="name" value="{name}"/>')
+            cfg.append('    <metadata key="extruder" value="1"/>')
+            for pid, mname, subtype, ntri in part_ids:
+                cfg.append(f'    <part id="{pid}" subtype="{subtype}">')
+                cfg.append(f'      <metadata key="name" value="{mname}"/>')
+                cfg.append(
+                    '      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>'
+                )
+                if subtype == "modifier_part":
+                    # 修改器的用处就在这一行：罩住的区域改成实心
+                    cfg.append('      <metadata key="sparse_infill_density" value="100%"/>')
+                cfg.append(f'      <mesh_stat face_count="{ntri}"/>')
+                cfg.append("    </part>")
+            cfg.append("  </object>")
+
             inst.extend(
                 [
                     "    <model_instance>",
-                    f'      <metadata key="object_id" value="{oid}"/>',
+                    f'      <metadata key="object_id" value="{container}"/>',
                     '      <metadata key="instance_id" value="0"/>',
                     "    </model_instance>",
                 ]
