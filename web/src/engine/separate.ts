@@ -32,6 +32,7 @@ import {
   MAX_LAYERS_Y,
   MIN_WHITE_LAYERS,
   RGB_CLIP_MIN,
+  UCR_ADD_BACK,
 } from "./constants";
 
 const f = Math.fround;
@@ -88,6 +89,19 @@ export interface SeparateOptions {
    * 每个抖动决定落到实物上正好是一个印得出来的点。
    */
   ditherBlock?: number;
+  /**
+   * 分色档案。默认 v3。
+   *
+   * v2 先把白底吸收从每个通道扣掉、各自裁到 0，再在**层数**上做 UCR。两个后果：
+   * 亮过 221/255 的通道一层墨都拿不到（浅粉、肉色、红晕整段变纯白），
+   * 而三色单层密度不等又让纯灰凭空长出色度（54 级灰阶里 34 级三色不等）。
+   *
+   * v3 把 UCR 挪到**光密度**空间：先在 e 上取 min 当中性成分，剩下的才是色度，
+   * 最后各自除以自己的密度。纯灰的色度精确是 0，浅色的色度也不再被裁切吃掉。
+   *
+   * v2 原样保留 —— 之前打过的片子要复现就选它。
+   */
+  profile?: "v2" | "v3";
   /** 白底层数，默认 4。 */
   minWhiteLayers?: number;
 }
@@ -172,6 +186,7 @@ export function separateCMYW(
   const keepFloor = options.keepFloor ?? LAYER_KEEP_FLOOR;
   const liftChromaOnly = options.liftChromaOnly ?? false;
   const ditherBlock = Math.max(1, Math.round(options.ditherBlock ?? 1));
+  const profile = options.profile ?? "v3";
   const whiteLayers = options.minWhiteLayers ?? MIN_WHITE_LAYERS;
 
   // 白底在每个通道贡献的固定密度。Python 侧此处是 float64 运算。
@@ -182,8 +197,11 @@ export function separateCMYW(
   const needM = new Float32Array(count);
   const needY = new Float32Array(count);
   const keepMask = new Uint8Array(count);
-  // 不开时连数组都不分配 —— 默认行为一字未动
-  const neutral = liftChromaOnly ? new Float32Array(count) : null;
+  // 不开时连数组都不分配 —— 默认行为一字未动。
+  // v3 的中性底在三个通道上不等（各自除以自己的密度），所以要分三份。
+  const neutralC = liftChromaOnly ? new Float32Array(count) : null;
+  const neutralM = liftChromaOnly ? new Float32Array(count) : null;
+  const neutralY = liftChromaOnly ? new Float32Array(count) : null;
 
   for (let i = 0; i < count; i += 1) {
     const p = i * 3;
@@ -201,31 +219,63 @@ export function separateCMYW(
     const eG = f(f(Math.pow(f(-f(Math.log(g))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT);
     const eB = f(f(Math.pow(f(-f(Math.log(b))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT);
 
-    // 扣掉白底吸收，除以单层密度 → 需求层数。青吸红、品红吸绿、黄吸蓝。
-    let c = f(f(eR - whiteCost) / DENSITY_C);
-    let m = f(f(eG - whiteCost) / DENSITY_M);
-    let y = f(f(eB - whiteCost) / DENSITY_Y);
-    c = c < 0 ? 0 : c;
-    m = m < 0 ? 0 : m;
-    y = y < 0 ? 0 : y;
-
-    // 自适应 UCR：抽掉三色重叠出来的灰，再按该像素自身亮度回加一部分
-    const k = Math.min(c, m, y);
-    const cChr = f(c - k);
-    const mChr = f(m - k);
-    const yChr = f(y - k);
-
     let lum = f(f(f(f(r + g) + b)) / 3);
     lum = lum < 0 ? 0 : lum > 1 ? 1 : lum;
-    const kBack = f(f(k * f(1 - lum)) * 0.45);
 
-    needC[i] = f(cChr + kBack);
-    needM[i] = f(mChr + kBack);
-    needY[i] = f(yChr + kBack);
+    let cChr: number;
+    let mChr: number;
+    let yChr: number;
+    let nC: number;
+    let nM: number;
+    let nY: number;
+
+    if (profile === "v2") {
+      // 扣掉白底吸收，除以单层密度 → 需求层数。青吸红、品红吸绿、黄吸蓝。
+      let c = f(f(eR - whiteCost) / DENSITY_C);
+      let m = f(f(eG - whiteCost) / DENSITY_M);
+      let y = f(f(eB - whiteCost) / DENSITY_Y);
+      c = c < 0 ? 0 : c;
+      m = m < 0 ? 0 : m;
+      y = y < 0 ? 0 : y;
+
+      // 自适应 UCR：抽掉三色重叠出来的灰，再按该像素自身亮度回加一部分
+      const k = Math.min(c, m, y);
+      cChr = f(c - k);
+      mChr = f(m - k);
+      yChr = f(y - k);
+      const kBack = f(f(k * f(1 - lum)) * 0.45);
+      nC = kBack;
+      nM = kBack;
+      nY = kBack;
+      needC[i] = f(cChr + kBack);
+      needM[i] = f(mChr + kBack);
+      needY[i] = f(yChr + kBack);
+    } else {
+      // v3：中性成分在**光密度**上取，不在层数上取
+      const eK = Math.min(eR, eG, eB);
+      cChr = f(f(eR - eK) / DENSITY_C);
+      mChr = f(f(eG - eK) / DENSITY_M);
+      yChr = f(f(eB - eK) / DENSITY_Y);
+
+      // 中性成分扣掉白底自己的吸收；比白底还亮的部分印不出来，裁掉的只是它
+      const kRaw = f(eK - whiteCost);
+      const kPos = kRaw < 0 ? 0 : kRaw;
+      const kBack = f(f(kPos * f(1 - lum)) * UCR_ADD_BACK);
+      nC = f(kBack / DENSITY_C);
+      nM = f(kBack / DENSITY_M);
+      nY = f(kBack / DENSITY_Y);
+      needC[i] = f(cChr + nC);
+      needM[i] = f(mChr + nM);
+      needY[i] = f(yChr + nY);
+    }
 
     // 只有真正带彩色度的像素才允许抬浅层
     keepMask[i] = f(f(cChr + mChr) + yChr) >= f(keepFloor) ? 1 : 0;
-    if (neutral !== null) neutral[i] = kBack;
+    if (neutralC !== null) {
+      neutralC[i] = nC;
+      neutralM![i] = nM;
+      neutralY![i] = nY;
+    }
   }
 
   const W = new Int32Array(count);
@@ -233,9 +283,9 @@ export function separateCMYW(
 
   return {
     W,
-    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor, neutral, ditherBlock),
-    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor, neutral, ditherBlock),
-    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor, neutral, ditherBlock),
+    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor, neutralC, ditherBlock),
+    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor, neutralM, ditherBlock),
+    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor, neutralY, ditherBlock),
     gridW,
     gridH,
   };

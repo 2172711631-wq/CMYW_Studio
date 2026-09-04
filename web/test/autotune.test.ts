@@ -65,6 +65,8 @@ describe("自动取值：与 Python 侧同一套判据", () => {
     expect(t.lift_chroma_only, "基准没走到 liftChromaOnly").toBe(true);
     expect(t.dither_amount, "基准把抖动关了，抖动块那条路一步也走不到").toBeGreaterThan(0);
     expect(t.dither_block, "基准的抖动块是 1，等于没放大").toBeGreaterThan(1);
+    // 基准是 v3 出的；TS 这边默认也必须是 v3，否则这个逐像素比对是在比两套算法
+    expect(auto.profile, "基准的分色档案变了，测试要跟着改").toBe("v3");
     for (const key of ["W", "Y", "M", "C"] as const) {
       const got = layers[key];
       const want = auto[key];

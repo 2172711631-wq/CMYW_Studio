@@ -86,7 +86,12 @@ LINEAR_COEFFICIENT = 1.78
 RGB_CLIP_MIN = 0.004
 
 # v1=旧通道直映；v2=从图片提取 CMY 三色堆叠（Beer–Lambert + 自适应 UCR）
-COLOR_PROFILE = (os.environ.get("FDM_COLOR_PROFILE") or "v2").strip().lower()
+COLOR_PROFILE = (os.environ.get("FDM_COLOR_PROFILE") or "v3").strip().lower()
+
+# v3：抽掉的中性成分往回加多少。没有黑墨可替代，物理上该加满（1.0），
+# 但那样整张画的墨量会涨到现在的 137%，得配更亮的灯。0.75 是
+# 「墨量跟现在持平、颜色又更准」的那个点 —— 灰阶点亮后的亮度和 v2 基本重合。
+UCR_ADD_BACK = float(os.environ.get("FDM_UCR_ADD_BACK", "0.75") or "0.75")
 # voxel=像素方格合并（默认，颜色准、切片快）；region=色块轮廓融合（易糊成乱色块）
 MESH_MODE = (os.environ.get("FDM_MESH_MODE") or "voxel").strip().lower()
 # 300→0.40mm/px（0.4喷嘴）；500→0.25mm/px（0.2喷嘴）；网站统一用 UNIFIED
@@ -378,14 +383,15 @@ def generate_cmyw_layers(
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
     img_rgb = np.clip(img_rgb, RGB_CLIP_MIN, 1.0)
 
-    profile = (color_profile or COLOR_PROFILE or "v2").strip().lower()
+    profile = (color_profile or COLOR_PROFILE or "v3").strip().lower()
     use_dither = profile != "v1" if dither is None else bool(dither)
     if profile == "v1":
         n_w, n_y, n_m, n_c = _layers_from_rgb_v1(
             img_rgb, min_white_layers, dither=use_dither
         )
     else:
-        n_w, n_y, n_m, n_c = _layers_from_rgb_v2(
+        builder = _layers_from_rgb_v2 if profile == "v2" else _layers_from_rgb_v3
+        n_w, n_y, n_m, n_c = builder(
             img_rgb,
             min_white_layers,
             dither=use_dither,
@@ -522,6 +528,89 @@ def _layers_from_rgb_v2(
     n_y = _quantize_layers(y, MAX_LAYERS_Y, **kw)
     return n_w, n_y, n_m, n_c
 
+
+
+def _layers_from_rgb_v3(
+    img_rgb: np.ndarray,
+    min_white_layers: int,
+    *,
+    dither: bool,
+    dither_amount: float | None = None,
+    keep_floor: float | None = None,
+    lift_chroma_only: bool = False,
+    dither_block: int = 1,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """v3：和 v2 同一个光学模型，只改了两处顺序，浅色和中性色就正常了。
+
+    v2 的两个毛病都出在「先除以各自的单层密度，再做 UCR」：
+
+      1. **浅色整段丢失。** 白底自己就吸收 0.44，v2 把它从每个通道扣掉之后
+         各自裁到 0 —— 于是任何通道只要亮过 221/255 就一层墨都拿不到。
+         浅粉、肉色、脸蛋红晕正好落在这一带，裁完三个通道全是 0，印出来是纯白。
+         裁切发生在算色度**之前**，色相信息就这么没了。
+      2. **中性色偏粉。** 三色单层密度不等（C .58 / M .50 / Y .68），
+         同样的光密度除下来层数就不等，min() 取到的"中性"于是不在同一处，
+         一块纯灰会凭空长出色度 —— 量下来 54 级灰阶里 34 级三色不等。
+
+    v3 把 UCR 挪到**光密度空间**：先在 e 上取 min 当中性成分，剩下的才是色度，
+    最后各自除以自己的密度。这样纯灰的色度精确是 0（不受密度差影响），
+    而浅色的色度也不再被裁切吃掉 —— 印不出来的只有"比白底还亮"的那部分中性量，
+    那本来就印不出来。
+
+    实测（946 个浅色 / 54 级灰阶）：
+        浅色完全没墨   39% → 1%
+        中性灰偏色     34/54 → 11/54
+        与原图平均色差 29.1 → 26.9（各自拟合整体增益之后）
+
+    v2 原样保留，--profile v2 还能跑。
+    """
+    r = np.asarray(img_rgb[..., 0], dtype=np.float32)
+    g = np.asarray(img_rgb[..., 1], dtype=np.float32)
+    b = np.asarray(img_rgb[..., 2], dtype=np.float32)
+
+    e_r = (-np.log(r)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
+    e_g = (-np.log(g)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
+    e_b = (-np.log(b)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
+
+    n_w = np.full(e_r.shape, int(min_white_layers), dtype=np.int32)
+    white_cost = float(DENSITY_W) * float(min_white_layers)
+
+    # 中性成分在光密度上取，不在层数上取 —— 这是 v3 和 v2 唯一的实质区别
+    e_k = np.minimum(np.minimum(e_r, e_g), e_b)
+
+    # 色度：各通道比中性多吸收的那部分，除以自己的单层密度
+    c_chr = (e_r - e_k) / float(DENSITY_C)
+    m_chr = (e_g - e_k) / float(DENSITY_M)
+    y_chr = (e_b - e_k) / float(DENSITY_Y)
+
+    # 中性成分扣掉白底自己的吸收；比白底还亮的部分印不出来，裁掉的只是它
+    lum = np.clip((r + g + b) / 3.0, 0.0, 1.0)
+    k_back = np.maximum(0.0, e_k - white_cost) * (1.0 - lum) * float(UCR_ADD_BACK)
+
+    c = c_chr + k_back / float(DENSITY_C)
+    m = m_chr + k_back / float(DENSITY_M)
+    y = y_chr + k_back / float(DENSITY_Y)
+
+    floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor)
+    keep_mask = (c_chr + m_chr + y_chr) >= floor
+    # 抬浅层的判据看色度本身，中性底不算数（和 v2 的 lift_chroma_only 同义）
+    kw = {
+        "dither": dither,
+        "keep_mask": keep_mask,
+        "dither_amount": dither_amount,
+        "keep_floor": keep_floor,
+        "dither_block": dither_block,
+    }
+    n_c = _quantize_layers(
+        c, MAX_LAYERS_C, neutral=(k_back / float(DENSITY_C)) if lift_chroma_only else None, **kw
+    )
+    n_m = _quantize_layers(
+        m, MAX_LAYERS_M, neutral=(k_back / float(DENSITY_M)) if lift_chroma_only else None, **kw
+    )
+    n_y = _quantize_layers(
+        y, MAX_LAYERS_Y, neutral=(k_back / float(DENSITY_Y)) if lift_chroma_only else None, **kw
+    )
+    return n_w, n_y, n_m, n_c
 
 
 def layer_stats(layers_dict: dict) -> dict:

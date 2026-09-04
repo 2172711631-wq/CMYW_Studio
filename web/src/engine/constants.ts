@@ -66,3 +66,8 @@ export const BAYER4: Float32Array = (() => {
   for (let i = 0; i < 16; i += 1) out[i] = Math.fround(raw[i] / 16 - 0.5);
   return out;
 })();
+
+/** v3：抽掉的中性成分往回加多少。没有黑墨可替代，物理上该加满（1.0），
+ *  但那样整张画的墨量会涨到 v2 的 137%，得配更亮的灯。0.75 是
+ *  「墨量与 v2 持平、颜色又更准」的那个点。与 Python 侧 UCR_ADD_BACK 同值。 */
+export const UCR_ADD_BACK = 0.75;

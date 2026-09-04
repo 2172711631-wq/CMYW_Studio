@@ -28,7 +28,7 @@ import numpy as np  # noqa: E402
 from main import (  # noqa: E402
     MIN_WHITE_LAYERS,
     RGB_CLIP_MIN,
-    _layers_from_rgb_v2,
+    _layers_from_rgb_v3,
     _mesh_merge_filter,
     apply_rounded_corner_mask,
     art_score,
@@ -148,7 +148,7 @@ def main(argv: list[str]) -> int:
         "dither_block": dither_block_for(0.10),
     }
     tuned_rgb = np.clip(rgb.astype(np.float32) / 255.0, RGB_CLIP_MIN, 1.0)
-    tw, ty, tm, tc = _layers_from_rgb_v2(
+    tw, ty, tm, tc = _layers_from_rgb_v3(
         tuned_rgb,
         MIN_WHITE_LAYERS,
         dither=tuned["dither_amount"] > 0.0,
@@ -164,6 +164,7 @@ def main(argv: list[str]) -> int:
         "flatness_of_grid": flatness_of(rgb),
         "curve": curve,
         "tuned": tuned,
+        "profile": "v3",
         "W": tw.reshape(-1).tolist(),
         "Y": ty.reshape(-1).tolist(),
         "M": tm.reshape(-1).tolist(),

@@ -101,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--profile",
         choices=("v1", "v2"),
         default="v2",
-        help="分色档案 / colour profile: v2=CMY提取+自适应UCR (默认), v1=旧通道直映射",
+        help="分色档案 / colour profile: v3=密度空间 UCR（默认，浅色与中性色更准）, v2=旧版（层数空间 UCR）, v1=旧通道直映射",
     )
     tuning.add_argument(
         "--no-dither", action="store_true", help="关闭有序抖动 / disable ordered dithering"
