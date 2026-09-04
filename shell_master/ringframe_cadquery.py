@@ -62,7 +62,7 @@ ART_SLOT_T = 1.85
 # —— 光学 ——
 DIFFUSER_T = 0.5      # 扩散片，磨砂 PET/PP。雾度靠材料不靠厚度
 DIFFUSER_SLOT_T = 0.7
-CAVITY_D = 7.5        # 灯板盘壁高度，也就是腔深。灯条占掉 3.0，剩下的是混光距离
+CAVITY_D = 10.0       # 灯板盘壁高度，也就是腔深。灯带平贴只占 LED_T，剩下的是混光距离
 CAVITY_INSET = 1.5    # 前框里托住扩散片的那圈台阶宽度，同时决定灯板插口大小。
                       # 必须小于 BEZEL_LAP，否则台阶会从取景窗里露出来
 
@@ -88,12 +88,19 @@ FRAME_R = 6.0         # 外圆角。必须大于 BACK_BEVEL，见 build_frame �
 BACK_BEVEL = 5.0      # 背面外沿的 45° 斜切，让侧面看着薄
 
 # —— 灯板模块 ——
-MODULE_BACK_T = 1.0   # 盘底厚，它就是背板
+# 盘底厚，它就是背板。1.0 的时候用手一推就能把画片整个顶动 ——
+# 背板是画片唯一的后靠，薄了就等于没靠。
+MODULE_BACK_T = 1.8
 MODULE_RIM = 1.5      # 盘壁厚
 MODULE_FIT = 0.3      # 灯板外形比前框插口小多少（总量）
-SNAP_H = 0.4          # 卡扣凸起高度
+# 卡扣。原来不生效的原因很硬：盘壁四边闭合成一个盒，**盒是不会向内让的**，
+# 0.25mm 的过盈要么插不进去、要么直接把凸起刮平，两种都等于没有卡扣。
+# 所以每个卡扣两侧各开一条通到盘口的豁口，把它变成一根从盘底悬出来的舌头 ——
+# 有了舌头才谈得上"压下去再弹回来"。能让了，凸起也就敢做高一点。
+SNAP_H = 0.6          # 卡扣凸起高度
 SNAP_LEN = 15.0       # 每个卡扣长度
 SNAP_AT = 0.55        # 卡扣在盘壁高度上的相对位置
+SNAP_RELIEF = 0.8     # 卡扣两侧的让位豁口宽度，0 = 不开（退回闭合盒）
 
 # —— 底座 ——
 # 底座同时是配重、插座和电池仓。电池和电路板只能放这儿：
@@ -410,6 +417,26 @@ def build_module() -> cq.Workplane:
     # 卡扣凸起：盘壁外侧左右各一对，带 45° 导入坡，插进去咔一下
     if SNAP_H > 1e-4:
         z_snap = MODULE_BACK_T + CAVITY_D * SNAP_AT
+
+        # 先开让位豁口：每个卡扣两侧各一条，从盘底往上一路通到盘口，
+        # 中间那段盘壁就成了一根悬臂舌头，能被压进去再弹回来。
+        # 豁口不切到盘底：底留 0.6，腔还是密的，光不会从这儿漏出去。
+        if SNAP_RELIEF > 1e-4:
+            for sx in (-1, 1):
+                inner = sx * (p["mod_w"] / 2.0 - MODULE_RIM - 0.6)
+                outer = sx * (p["mod_w"] / 2.0 + SNAP_H + 1.0)
+                for sy in (-1, 1):
+                    cy = sy * p["mod_h"] / 4.0
+                    for side in (-1, 1):
+                        y0 = cy + side * SNAP_LEN / 2.0 - SNAP_RELIEF / 2.0
+                        tray = tray.cut(
+                            _box_xyz(
+                                min(inner, outer), max(inner, outer),
+                                y0, y0 + SNAP_RELIEF,
+                                MODULE_BACK_T + 0.6, p["module_h"] + 1.0,
+                            )
+                        )
+
         for sx in (-1, 1):
             for sy in (-1, 1):
                 cx = sx * (p["mod_w"] / 2.0 + SNAP_H / 2.0)
@@ -885,6 +912,12 @@ def spec() -> list[tuple[str, str]]:
             f"120 珠/米、CRI ≥ 90、4000–5000K",
         ),
         ("腔深", f'{CAVITY_D:.1f} mm，灯条平贴只占 {LED_T:.1f}，**混光距离 {p["mix_gap"]:.1f} mm**'),
+        (
+            "卡扣",
+            f"凸起 {SNAP_H}、每侧两处 × {SNAP_LEN:.0f} 长；两边各开 {SNAP_RELIEF} 的让位豁口，"
+            f"盘壁才让得动 —— 不开豁口的闭合盒压不下去，等于没有卡扣",
+        ),
+        ("背板", f"盘底 {MODULE_BACK_T} 厚，画片的后靠就是它"),
         (
             "直射盲区",
             f'中间 {p["dark_w"]:.0f} × {p["dark_h"]:.0f} mm 没有直射光，'
