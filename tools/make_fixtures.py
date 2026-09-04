@@ -161,6 +161,19 @@ def main(argv: list[str]) -> int:
         dither_block=tuned["dither_block"],
         dither_screen=tuned["dither_screen"],
     )
+    # 线网那条路也钉住：它不是自动档在用的，但实现还在，
+    # 而只要有第二条路，两个引擎就有分叉的余地。
+    lw2, ly2, lm2, lc2 = _layers_from_rgb_v3(
+        tuned_rgb,
+        MIN_WHITE_LAYERS,
+        dither=tuned["dither_amount"] > 0.0,
+        dither_amount=tuned["dither_amount"],
+        keep_floor=tuned["keep_floor"],
+        lift_chroma_only=tuned["lift_chroma_only"],
+        dither_block=tuned["dither_block"],
+        dither_screen="line",
+    )
+
     auto = {
         "grid_w": GRID_W,
         "grid_h": GRID_H,
@@ -173,6 +186,10 @@ def main(argv: list[str]) -> int:
         "Y": ty.reshape(-1).tolist(),
         "M": tm.reshape(-1).tolist(),
         "C": tc.reshape(-1).tolist(),
+        "lineW": lw2.reshape(-1).tolist(),
+        "lineY": ly2.reshape(-1).tolist(),
+        "lineM": lm2.reshape(-1).tolist(),
+        "lineC": lc2.reshape(-1).tolist(),
     }
 
     # --- 网格化基准 ---

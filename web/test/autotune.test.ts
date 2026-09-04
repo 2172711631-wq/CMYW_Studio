@@ -24,6 +24,30 @@ import { separateCMYW } from "../src/engine/separate";
 
 const rgb = Uint8ClampedArray.from(reference.rgb);
 
+/** 逐格比对两组层数，不一致就把第一处差异指出来。 */
+function expectSameLayers(
+  got: { W: Int32Array; Y: Int32Array; M: Int32Array; C: Int32Array },
+  want: { W: number[]; Y: number[]; M: number[]; C: number[] },
+  label: string,
+): void {
+  for (const key of ["W", "Y", "M", "C"] as const) {
+    const a = got[key];
+    const b = want[key];
+    let diff = 0;
+    let first = -1;
+    for (let i = 0; i < b.length; i += 1) {
+      if (a[i] !== b[i]) {
+        diff += 1;
+        if (first < 0) first = i;
+      }
+    }
+    expect(
+      diff,
+      diff ? `${label} ${key} 有 ${diff} 格对不上，第一处在 ${first}：TS ${a[first]} vs PY ${b[first]}` : "",
+    ).toBe(0);
+  }
+}
+
 describe("自动取值：与 Python 侧同一套判据", () => {
   it("平坦度：同一个数组量出同一个数", () => {
     expect(flatnessOf(rgb, auto.grid_w, auto.grid_h)).toBeCloseTo(auto.flatness_of_grid, 12);
@@ -67,24 +91,26 @@ describe("自动取值：与 Python 侧同一套判据", () => {
     expect(t.lift_chroma_only, "基准没走到 liftChromaOnly").toBe(true);
     expect(t.dither_amount, "基准把抖动关了，抖动块那条路一步也走不到").toBeGreaterThan(0);
     expect(t.dither_block, "基准的抖动块是 1，等于没放大").toBeGreaterThan(1);
-    expect(t.dither_screen, "基准没走到线网，这条路一步也测不到").toBe("line");
+    expect(t.dither_screen, "基准的网屏变了，测试要跟着改").toBe("bayer");
     // 基准是 v3 出的；TS 这边默认也必须是 v3，否则这个逐像素比对是在比两套算法
     expect(auto.profile, "基准的分色档案变了，测试要跟着改").toBe("v3");
-    for (const key of ["W", "Y", "M", "C"] as const) {
-      const got = layers[key];
-      const want = auto[key];
-      let diff = 0;
-      let first = -1;
-      for (let i = 0; i < want.length; i += 1) {
-        if (got[i] !== want[i]) {
-          diff += 1;
-          if (first < 0) first = i;
-        }
-      }
-      expect(
-        diff,
-        diff ? `${key} 有 ${diff} 个格子对不上，第一个在 ${first}：TS ${got[first]} vs PY ${want[first]}` : "",
-      ).toBe(0);
-    }
+    expectSameLayers(layers, auto, "网点");
+  });
+
+  it("线网那条路也逐像素一致 —— 不是自动档在用，但实现还在", () => {
+    const t = auto.tuned;
+    const layers = separateCMYW(rgb, auto.grid_w, auto.grid_h, {
+      dither: t.dither_amount > 0,
+      ditherAmount: t.dither_amount,
+      keepFloor: t.keep_floor,
+      liftChromaOnly: t.lift_chroma_only,
+      ditherBlock: t.dither_block,
+      ditherScreen: "line",
+    });
+    expectSameLayers(
+      layers,
+      { W: auto.lineW, Y: auto.lineY, M: auto.lineM, C: auto.lineC },
+      "线网",
+    );
   });
 });
