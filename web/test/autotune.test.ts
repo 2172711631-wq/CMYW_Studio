@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import auto from "./fixtures/separation-auto-reference.json";
 import reference from "./fixtures/separation-reference.json";
 import {
-  artScore, ditherAmountFor, ditherBlockFor, flatnessOf, keepFloorFor,
+  artScore, ditherAmountFor, ditherBlockFor, ditherScreenFor, flatnessOf, keepFloorFor,
   liftChromaOnlyFor, mergeFilterFor, mmPerPxFor,
 } from "../src/engine/autotune";
 import { separateCMYW } from "../src/engine/separate";
@@ -39,6 +39,7 @@ describe("自动取值：与 Python 侧同一套判据", () => {
       expect(mergeFilterFor(f), `filter @ ${f}`).toBe(row.merge_filter);
       expect(mmPerPxFor(f), `mm/px @ ${f}`).toBeCloseTo(row.mm_per_px, 12);
       expect(ditherBlockFor(row.mm_per_px), `dither block @ ${f}`).toBe(row.dither_block);
+      expect(ditherScreenFor(f), `screen @ ${f}`).toBe(row.dither_screen);
     }
   });
 
@@ -60,11 +61,13 @@ describe("自动取值：与 Python 侧同一套判据", () => {
       keepFloor: t.keep_floor,
       liftChromaOnly: t.lift_chroma_only,
       ditherBlock: t.dither_block,
+      ditherScreen: t.dither_screen as "bayer" | "line",
     });
     // 这一组参数必须同时踩到三条默认路径走不到的分支，否则这个用例是空的
     expect(t.lift_chroma_only, "基准没走到 liftChromaOnly").toBe(true);
     expect(t.dither_amount, "基准把抖动关了，抖动块那条路一步也走不到").toBeGreaterThan(0);
     expect(t.dither_block, "基准的抖动块是 1，等于没放大").toBeGreaterThan(1);
+    expect(t.dither_screen, "基准没走到线网，这条路一步也测不到").toBe("line");
     // 基准是 v3 出的；TS 这边默认也必须是 v3，否则这个逐像素比对是在比两套算法
     expect(auto.profile, "基准的分色档案变了，测试要跟着改").toBe("v3");
     for (const key of ["W", "Y", "M", "C"] as const) {

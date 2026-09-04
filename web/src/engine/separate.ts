@@ -37,6 +37,10 @@ import {
 
 const f = Math.fround;
 
+/** 线网的级数。级数越多色调越准，但图案周期 = 级数 × 行距，太长就看得见条纹。
+ *  与 Python 侧 LINE_SCREEN_LEVELS 同值。 */
+const LINE_SCREEN_LEVELS = 4;
+
 export interface LayerSet {
   /** 白 / 黄 / 品红 / 青 的层数，行优先，长度 = gridW × gridH */
   W: Int32Array;
@@ -90,6 +94,15 @@ export interface SeparateOptions {
    */
   ditherBlock?: number;
   /**
+   * 抖动图案。默认 "bayer"（4×4 网点，v2 基准钉的就是它）。
+   *
+   * "line" 是线网：阈值只沿 Y 变，同一行整行一个值，落到实物上是一条条**连续的
+   * 挤出线**。网点在 0.4mm 这个尺度上是一颗颗孤立的点，切片器只能一个个去补 ——
+   * 满屏缝隙填充、上千次回抽、换料次数暴涨，实测 44 万三角形还切得一塌糊涂。
+   * 线网同一张图 1.9 万三角形，色调误差 0.230 → 0.094（网点 0.041）。
+   */
+  ditherScreen?: "bayer" | "line";
+  /**
    * 分色档案。默认 v3。
    *
    * v2 先把白底吸收从每个通道扣掉、各自裁到 0，再在**层数**上做 UCR。两个后果：
@@ -132,6 +145,7 @@ function quantize(
   keepFloor: number,
   neutral: Float32Array | null,
   ditherBlock: number,
+  ditherScreen: "bayer" | "line",
 ): Int32Array {
   const n = need.length;
   const out = new Int32Array(n);
@@ -146,12 +160,19 @@ function quantize(
     let x = need[i];
 
     if (dither) {
-      // Bayer 矩阵按 4×4 平铺；ditherBlock > 1 时每格放大成 block×block
       const y = (i / gridW) | 0;
-      const col = i - y * gridW;
-      const by = ((y / ditherBlock) | 0) & 3;
-      const bx = ((col / ditherBlock) | 0) & 3;
-      const bayer = BAYER4[by * 4 + bx];
+      let bayer: number;
+      if (ditherScreen === "line") {
+        // 线网：阈值只跟行走，同一行整行一个值 → 打出来是一条连续的线
+        const row = ((y / ditherBlock) | 0) % LINE_SCREEN_LEVELS;
+        bayer = f((row + 0.5) / LINE_SCREEN_LEVELS - 0.5);
+      } else {
+        // Bayer 矩阵按 4×4 平铺；ditherBlock > 1 时每格放大成 block×block
+        const col = i - y * gridW;
+        const by = ((y / ditherBlock) | 0) & 3;
+        const bx = ((col / ditherBlock) | 0) & 3;
+        bayer = BAYER4[by * 4 + bx];
+      }
       x = f(x + f(bayer * amount));
     }
 
@@ -191,6 +212,7 @@ export function separateCMYW(
   const keepFloor = options.keepFloor ?? LAYER_KEEP_FLOOR;
   const liftChromaOnly = options.liftChromaOnly ?? false;
   const ditherBlock = Math.max(1, Math.round(options.ditherBlock ?? 1));
+  const ditherScreen = options.ditherScreen ?? "bayer";
   const profile = options.profile ?? "v3";
   const whiteLayers = options.minWhiteLayers ?? MIN_WHITE_LAYERS;
 
@@ -288,9 +310,9 @@ export function separateCMYW(
 
   return {
     W,
-    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor, neutralC, ditherBlock),
-    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor, neutralM, ditherBlock),
-    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor, neutralY, ditherBlock),
+    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor, neutralC, ditherBlock, ditherScreen),
+    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor, neutralM, ditherBlock, ditherScreen),
+    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor, neutralY, ditherBlock, ditherScreen),
     gridW,
     gridH,
   };

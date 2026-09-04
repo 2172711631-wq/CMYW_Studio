@@ -11,6 +11,7 @@ import {
   artScore,
   ditherAmountFor,
   ditherBlockFor,
+  ditherScreenFor,
   flatnessOf,
   keepFloorFor,
   liftChromaOnlyFor,
@@ -565,6 +566,7 @@ function requestPreview(): void {
     keepFloor: keepFloorFor(lastFlatness),
     liftChromaOnly: liftChromaOnlyFor(lastFlatness),
     ditherBlock: ditherBlockFor(mmPerPx()),
+    ditherScreen: ditherScreenFor(lastFlatness),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
@@ -666,6 +668,7 @@ function startExport(): void {
     keepFloor: keepFloorFor(lastFlatness),
     liftChromaOnly: liftChromaOnlyFor(lastFlatness),
     ditherBlock: ditherBlockFor(mmPerPx()),
+    ditherScreen: ditherScreenFor(lastFlatness),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);

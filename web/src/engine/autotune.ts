@@ -93,6 +93,15 @@ export function ditherBlockFor(mmPerPx: number): number {
   return Math.max(1, Math.round(NOZZLE_MM / mmPerPx));
 }
 
+/** 用线网，不用网点。
+ *
+ * 网点在喷嘴尺度上是一颗颗孤立的点，切片器补不动 —— 满屏缝隙填充、上千次回抽。
+ * 线网每行是一条连续挤出线，正是 FDM 干得最顺的事。留成函数是因为它仍是"策略"。 */
+export function ditherScreenFor(flat: number): "bayer" | "line" {
+  void flat;
+  return "line";
+}
+
 /** 网格密度 mm/px：插画靠细线吃饭，格子给密一点。
  *
  * 照片是连续调，标准密度就够，再密只是把三角形和文件撑大。

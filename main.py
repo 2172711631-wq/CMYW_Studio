@@ -253,6 +253,16 @@ def mesh_merge_filter_for(flat: float) -> int:
     return 1 if art_score(flat) > 0.5 else int(MESH_MERGE_FILTER)
 
 
+def dither_screen_for(flat: float) -> str:
+    """用线网，不用网点。
+
+    网点在喷嘴尺度上是一颗颗孤立的点，切片器补不动；线网每行是一条连续挤出线。
+    留成函数而不是常数，是因为它仍是"策略"：以后想按画风换回网点，改这里就够了。
+    """
+    del flat
+    return "line"
+
+
 def mm_per_px_for(flat: float) -> float:
     """网格密度 mm/px：插画靠细线吃饭，格子给密一点。
 
@@ -373,6 +383,7 @@ def generate_cmyw_layers(
             "merge_filter": mesh_merge_filter_for(flat),
             "mm_per_px": mm_per_px_for(flat),
             "dither_block": dither_block_for(mm_per_px),
+            "dither_screen": dither_screen_for(flat),
         }
         if auto_tune
         else None
@@ -407,6 +418,7 @@ def generate_cmyw_layers(
             keep_floor=tune["keep_floor"] if tune else None,
             lift_chroma_only=bool(tune["lift_chroma_only"]) if tune else False,
             dither_block=int(tune["dither_block"]) if tune else 1,
+            dither_screen=str(tune["dither_screen"]) if tune else "bayer",
         )
 
     result = {"C": n_c, "M": n_m, "Y": n_y, "W": n_w, "shape": img_bgr.shape}
@@ -425,6 +437,27 @@ def _bayer_tile(h: int, w: int, block: int = 1) -> np.ndarray:
     return _BAYER4[yy[:, None], xx[None, :]]
 
 
+# 线网的级数。级数越多色调越准，但图案周期 = 级数 × 行距，太长就看得见条纹。
+LINE_SCREEN_LEVELS = 4
+
+
+def _line_tile(h: int, w: int, block: int = 1, levels: int = LINE_SCREEN_LEVELS) -> np.ndarray:
+    """线网：阈值只沿 Y 变，同一行整行一个值。
+
+    为什么不用网点。网点在 0.4mm（= 喷嘴）尺度上是一颗颗**孤立的点**，
+    切片器只能一个个去补 —— 出来满屏的缝隙填充、上千次回抽、换料次数暴涨，
+    实测同一张图 44 万三角形还切得一塌糊涂。
+    线网的每一行是一条**连续的挤出线**，正是 FDM 干得最顺的事：
+    同样的图 1.9 万三角形，色调误差 0.230 → 0.094（网点是 0.041）。
+    二十分之一的几何量换来四成的色调精度，而且是真能打出来的那种。
+    """
+    b = max(1, int(block))
+    n = max(2, int(levels))
+    row = (np.arange(h) // b) % n
+    thr = ((row + 0.5) / n - 0.5).astype(np.float32)
+    return np.repeat(thr[:, None], w, axis=1)
+
+
 def _quantize_layers(
     need: np.ndarray,
     max_layers: int,
@@ -435,6 +468,7 @@ def _quantize_layers(
     keep_floor: float | None = None,
     neutral: np.ndarray | None = None,
     dither_block: int = 1,
+    dither_screen: str = "bayer",
 ) -> np.ndarray:
     """浮点需求层 → 整数层；抖动减少丢浅色与等高线。
 
@@ -444,7 +478,8 @@ def _quantize_layers(
     amount = float(LAYER_DITHER_AMT if dither_amount is None else dither_amount)
     x = need.astype(np.float32)
     if dither and amount > 0.0:
-        x = x + _bayer_tile(x.shape[0], x.shape[1], dither_block) * amount
+        tile = _line_tile if dither_screen == "line" else _bayer_tile
+        x = x + tile(x.shape[0], x.shape[1], dither_block) * amount
 
     # 抬浅层：把够不到 0.5 的浅色抬成一整层，免得整片消失。
     #
@@ -488,6 +523,7 @@ def _layers_from_rgb_v2(
     keep_floor: float | None = None,
     lift_chroma_only: bool = False,
     dither_block: int = 1,
+    dither_screen: str = "bayer",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """从图片直接提取 C/M/Y 三色并堆叠（随图自适应，无偏色补偿旋钮）。
 
@@ -537,6 +573,7 @@ def _layers_from_rgb_v2(
         "keep_floor": keep_floor,
         "neutral": neutral,
         "dither_block": dither_block,
+        "dither_screen": dither_screen,
     }
     n_c = _quantize_layers(c, MAX_LAYERS_C, **kw)
     n_m = _quantize_layers(m, MAX_LAYERS_M, **kw)
@@ -554,6 +591,7 @@ def _layers_from_rgb_v3(
     keep_floor: float | None = None,
     lift_chroma_only: bool = False,
     dither_block: int = 1,
+    dither_screen: str = "bayer",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """v3：和 v2 同一个光学模型，只改了两处顺序，浅色和中性色就正常了。
 
@@ -615,6 +653,7 @@ def _layers_from_rgb_v3(
         "dither_amount": dither_amount,
         "keep_floor": keep_floor,
         "dither_block": dither_block,
+        "dither_screen": dither_screen,
     }
     n_c = _quantize_layers(
         c, MAX_LAYERS_C, neutral=(k_back / float(DENSITY_C)) if lift_chroma_only else None, **kw
