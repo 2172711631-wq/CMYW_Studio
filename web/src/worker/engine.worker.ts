@@ -93,28 +93,39 @@ function coverage(layer: Int32Array): number {
   return (n / layer.length) * 100;
 }
 
+/** 从请求里取出分色参数。
+ *
+ * 单独抽出来是有原因的：这些参数原先是一串位置参数，预览和导出各写一遍。
+ * 加参数的时候我只改了预览那边，导出那边少传了三个 —— 于是预览是新算法、
+ * 导出还是旧的，而两边都不报错，只有把文件切出来才看得见。
+ * 现在两条路都从这一个函数拿，漏传就是编译错误，不再是打印之后才发现。
+ */
+function separationOptions(req: {
+  ditherAmount?: number;
+  keepFloor?: number;
+  liftChromaOnly?: boolean;
+  ditherBlock?: number;
+  ditherScreen?: "bayer" | "line";
+}) {
+  return {
+    dither: (req.ditherAmount ?? 1) > 0,
+    ditherAmount: req.ditherAmount,
+    keepFloor: req.keepFloor,
+    liftChromaOnly: req.liftChromaOnly,
+    ditherBlock: req.ditherBlock,
+    ditherScreen: req.ditherScreen,
+  };
+}
+
 function separateWithCorner(
   rgb: Uint8ClampedArray,
   gridW: number,
   gridH: number,
   widthMm: number,
   cornerRadiusMm: number,
-  ditherAmount?: number,
-  keepFloor?: number,
-  liftChromaOnly?: boolean,
-  ditherBlock?: number,
-  ditherScreen?: "bayer" | "line",
+  options: ReturnType<typeof separationOptions>,
 ): LayerSet {
-  // 抖动是给照片的：连续调靠它把层数之间的台阶打散。
-  // 插画/线稿是大片平色 + 细线，抖动反而在平色里撒麻点、把细线咬断，关掉更干净。
-  const layers = separateCMYW(rgb, gridW, gridH, {
-    dither: (ditherAmount ?? 1) > 0,
-    ditherAmount,
-    keepFloor,
-    liftChromaOnly,
-    ditherBlock,
-    ditherScreen,
-  });
+  const layers = separateCMYW(rgb, gridW, gridH, options);
   const mask = roundedCornerKeepMask(gridW, gridH, widthMm, cornerRadiusMm);
   if (mask) applyKeepMask(mask, layers.W, layers.Y, layers.M, layers.C);
   return layers;
@@ -205,7 +216,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       report(req.id, 15, "分色中");
       const layers = separateWithCorner(
         req.rgb, req.gridW, req.gridH, req.widthMm, req.cornerRadiusMm,
-        req.ditherAmount, req.keepFloor, req.liftChromaOnly, req.ditherBlock, req.ditherScreen,
+        separationOptions(req),
       );
 
       report(req.id, 65, "模拟透光");
@@ -241,7 +252,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     // 复用圆角遮罩那套（已经有 Python 对拍），不需要另写一条裁形路径。
     const cornerRadius = req.cornerRadiusMm ?? (shell ? shell.corner : 0);
     const layers = separateWithCorner(
-      req.rgb, gridW, gridH, widthMm, cornerRadius, req.ditherAmount, req.keepFloor,
+      req.rgb, gridW, gridH, widthMm, cornerRadius, separationOptions(req),
     );
 
     report(req.id, 30, "平滑层高");
