@@ -71,6 +71,21 @@ export function mergeFilterFor(flat: number): number {
   return artScore(flat) > 0.5 ? 1 : MESH_MERGE_FILTER;
 }
 
+/** 喷嘴直径。XY 方向上比它细的东西印不出来 —— 要么消失，要么被挤成它这么粗。 */
+export const NOZZLE_MM = 0.4;
+
+/** 抖动格子要多大：按喷嘴来，不是按网格来。
+ *
+ * 抖动是拿相邻格子的层数高低差去换视觉上的中间色。格子比喷嘴小的时候这笔交易
+ * 根本不成立 —— 0.1mm/px 下一个孤立的抖动点只有喷嘴面积的十六分之一，
+ * 印不出来，只会变成一堆多余的三角形，或者被挤成 0.4mm 的一颗麻点。
+ *
+ * 实测 0.1mm/px、插画度 52% 时，亚喷嘴的等值连通块从 1705 个降到 24 个。 */
+export function ditherBlockFor(mmPerPx: number): number {
+  if (!(mmPerPx > 0)) return 1;
+  return Math.max(1, Math.round(NOZZLE_MM / mmPerPx));
+}
+
 /** 网格密度 mm/px：插画靠细线吃饭，格子给密一点。
  *
  * 照片是连续调，标准密度就够，再密只是把三角形和文件撑大。

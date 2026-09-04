@@ -170,6 +170,9 @@ def load_image_bgr(image_path: str) -> np.ndarray | None:
 # 量平坦度用的探针尺寸。太小量不准，太大白费时间；网页端也是 192。
 FLATNESS_PROBE = 192
 
+# 喷嘴直径。XY 方向上比它细的东西印不出来 —— 要么消失，要么被挤成它这么粗。
+NOZZLE_MM = 0.4
+
 
 def flatness_of(img: np.ndarray) -> float:
     """量这张图有多"平"：相邻像素几乎没有差别的比例。
@@ -251,6 +254,24 @@ def mm_per_px_for(flat: float) -> float:
     return float(UNIFIED_MM_PER_PX)
 
 
+def dither_block_for(mm_per_px: float | None) -> int:
+    """抖动格子要多大：按喷嘴来，不是按网格来。
+
+    抖动是拿相邻格子的层数高低差去换视觉上的中间色。格子比喷嘴小的时候这笔交易
+    根本不成立 —— 0.1mm/px 下一个孤立的抖动点只有喷嘴面积的十六分之一，
+    印不出来，只会变成一堆多余的三角形，或者被挤成 0.4mm 的一颗麻点。
+
+    所以把 4×4 的 Bayer 图案整体放大到喷嘴尺寸：每个抖动决定覆盖 block×block 个
+    格子，落到实物上正好是一个能印出来的点。实测 0.1mm/px、插画度 52% 时，
+    亚喷嘴的等值连通块从 1705 个降到 24 个，等值块总数从 1716 降到 132。
+
+    mm_per_px 不知道时返回 1 —— 也就是原来的行为。
+    """
+    if not mm_per_px or mm_per_px <= 0:
+        return 1
+    return max(1, int(round(NOZZLE_MM / float(mm_per_px))))
+
+
 def auto_mm_per_px(image_path: str) -> float:
     """先看一眼图再定网格密度。读不出图就退回统一密度。"""
     img = load_image_bgr(image_path)
@@ -314,6 +335,7 @@ def generate_cmyw_layers(
     dither: bool | None = None,
     color_profile: str | None = None,
     auto_tune: bool = True,
+    mm_per_px: float | None = None,
 ) -> dict | None:
     """
     RGB → CMYW 层数：从图片提取 C/M/Y 光学密度并堆叠（v2），白底固定。
@@ -337,6 +359,7 @@ def generate_cmyw_layers(
             "lift_chroma_only": lift_chroma_only_for(flat),
             "merge_filter": mesh_merge_filter_for(flat),
             "mm_per_px": mm_per_px_for(flat),
+            "dither_block": dither_block_for(mm_per_px),
         }
         if auto_tune
         else None
@@ -369,6 +392,7 @@ def generate_cmyw_layers(
             dither_amount=tune["dither_amount"] if tune else None,
             keep_floor=tune["keep_floor"] if tune else None,
             lift_chroma_only=bool(tune["lift_chroma_only"]) if tune else False,
+            dither_block=int(tune["dither_block"]) if tune else 1,
         )
 
     result = {"C": n_c, "M": n_m, "Y": n_y, "W": n_w, "shape": img_bgr.shape}
@@ -379,10 +403,12 @@ def generate_cmyw_layers(
     return result
 
 
-def _bayer_tile(h: int, w: int) -> np.ndarray:
-    reps_y = (h + 3) // 4
-    reps_x = (w + 3) // 4
-    return np.tile(_BAYER4, (reps_y, reps_x))[:h, :w]
+def _bayer_tile(h: int, w: int, block: int = 1) -> np.ndarray:
+    """4×4 Bayer 图案铺满整幅。block > 1 时每个格子放大成 block×block。"""
+    b = max(1, int(block))
+    yy = (np.arange(h) // b) & 3
+    xx = (np.arange(w) // b) & 3
+    return _BAYER4[yy[:, None], xx[None, :]]
 
 
 def _quantize_layers(
@@ -394,6 +420,7 @@ def _quantize_layers(
     dither_amount: float | None = None,
     keep_floor: float | None = None,
     neutral: np.ndarray | None = None,
+    dither_block: int = 1,
 ) -> np.ndarray:
     """浮点需求层 → 整数层；抖动减少丢浅色与等高线。
 
@@ -403,7 +430,7 @@ def _quantize_layers(
     amount = float(LAYER_DITHER_AMT if dither_amount is None else dither_amount)
     x = need.astype(np.float32)
     if dither and amount > 0.0:
-        x = x + _bayer_tile(*x.shape) * amount
+        x = x + _bayer_tile(x.shape[0], x.shape[1], dither_block) * amount
     # 仅在 keep_mask（有色度）区域抬浅层，避免灰底/高光被三色薄雾铺满
     floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor)
     weight = need if neutral is None else (need - neutral)
@@ -439,6 +466,7 @@ def _layers_from_rgb_v2(
     dither_amount: float | None = None,
     keep_floor: float | None = None,
     lift_chroma_only: bool = False,
+    dither_block: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """从图片直接提取 C/M/Y 三色并堆叠（随图自适应，无偏色补偿旋钮）。
 
@@ -487,6 +515,7 @@ def _layers_from_rgb_v2(
         "dither_amount": dither_amount,
         "keep_floor": keep_floor,
         "neutral": neutral,
+        "dither_block": dither_block,
     }
     n_c = _quantize_layers(c, MAX_LAYERS_C, **kw)
     n_m = _quantize_layers(m, MAX_LAYERS_M, **kw)

@@ -10,6 +10,7 @@ import "./site";
 import {
   artScore,
   ditherAmountFor,
+  ditherBlockFor,
   flatnessOf,
   keepFloorFor,
   liftChromaOnlyFor,
@@ -482,6 +483,7 @@ function requestPreview(): void {
     ditherAmount: ditherAmountFor(lastFlatness),
     keepFloor: keepFloorFor(lastFlatness),
     liftChromaOnly: liftChromaOnlyFor(lastFlatness),
+    ditherBlock: ditherBlockFor(mmPerPx()),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
@@ -582,6 +584,7 @@ function startExport(): void {
     ditherAmount: ditherAmountFor(lastFlatness),
     keepFloor: keepFloorFor(lastFlatness),
     liftChromaOnly: liftChromaOnlyFor(lastFlatness),
+    ditherBlock: ditherBlockFor(mmPerPx()),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);

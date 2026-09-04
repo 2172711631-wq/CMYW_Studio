@@ -35,6 +35,7 @@ export type WorkerRequest =
       /** 浅色保留阈值。线稿要调低，否则淡线和抗锯齿边会被整条丢掉 */
       keepFloor?: number;
       liftChromaOnly?: boolean;
+      ditherBlock?: number;
       /** 网格化前的中值滤波尺寸。3 = 默认，1 = 关掉（线稿要关，否则细线被吃） */
       mergeFilter?: number;
       widthMm: number;
@@ -55,6 +56,7 @@ export type WorkerRequest =
       /** 浅色保留阈值。线稿要调低，否则淡线和抗锯齿边会被整条丢掉 */
       keepFloor?: number;
       liftChromaOnly?: boolean;
+      ditherBlock?: number;
       /** 网格化前的中值滤波尺寸。3 = 默认，1 = 关掉（线稿要关，否则细线被吃） */
       mergeFilter?: number;
       /** 圆形时要不要连吧唧外壳一起打包 */
@@ -98,6 +100,7 @@ function separateWithCorner(
   ditherAmount?: number,
   keepFloor?: number,
   liftChromaOnly?: boolean,
+  ditherBlock?: number,
 ): LayerSet {
   // 抖动是给照片的：连续调靠它把层数之间的台阶打散。
   // 插画/线稿是大片平色 + 细线，抖动反而在平色里撒麻点、把细线咬断，关掉更干净。
@@ -106,6 +109,7 @@ function separateWithCorner(
     ditherAmount,
     keepFloor,
     liftChromaOnly,
+    ditherBlock,
   });
   const mask = roundedCornerKeepMask(gridW, gridH, widthMm, cornerRadiusMm);
   if (mask) applyKeepMask(mask, layers.W, layers.Y, layers.M, layers.C);
@@ -197,7 +201,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       report(req.id, 15, "分色中");
       const layers = separateWithCorner(
         req.rgb, req.gridW, req.gridH, req.widthMm, req.cornerRadiusMm,
-        req.ditherAmount, req.keepFloor, req.liftChromaOnly,
+        req.ditherAmount, req.keepFloor, req.liftChromaOnly, req.ditherBlock,
       );
 
       report(req.id, 65, "模拟透光");

@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import auto from "./fixtures/separation-auto-reference.json";
 import reference from "./fixtures/separation-reference.json";
 import {
-  artScore, ditherAmountFor, flatnessOf, keepFloorFor,
+  artScore, ditherAmountFor, ditherBlockFor, flatnessOf, keepFloorFor,
   liftChromaOnlyFor, mergeFilterFor, mmPerPxFor,
 } from "../src/engine/autotune";
 import { separateCMYW } from "../src/engine/separate";
@@ -38,6 +38,7 @@ describe("自动取值：与 Python 侧同一套判据", () => {
       expect(liftChromaOnlyFor(f), `lift @ ${f}`).toBe(row.lift_chroma_only);
       expect(mergeFilterFor(f), `filter @ ${f}`).toBe(row.merge_filter);
       expect(mmPerPxFor(f), `mm/px @ ${f}`).toBeCloseTo(row.mm_per_px, 12);
+      expect(ditherBlockFor(row.mm_per_px), `dither block @ ${f}`).toBe(row.dither_block);
     }
   });
 
@@ -47,6 +48,8 @@ describe("自动取值：与 Python 侧同一套判据", () => {
     expect(lifts).toContain(false);
     const filters = new Set(auto.curve.map((r) => r.merge_filter));
     expect(filters.size).toBeGreaterThan(1);
+    const blocks = new Set(auto.curve.map((r) => r.dither_block));
+    expect(blocks.size, "整条曲线的抖动块都一样，等于没测这条路").toBeGreaterThan(1);
   });
 
   it("插画档参数下，引擎逐像素一致", () => {
@@ -56,8 +59,12 @@ describe("自动取值：与 Python 侧同一套判据", () => {
       ditherAmount: t.dither_amount,
       keepFloor: t.keep_floor,
       liftChromaOnly: t.lift_chroma_only,
+      ditherBlock: t.dither_block,
     });
-    expect(t.lift_chroma_only, "基准没走到 liftChromaOnly，这个用例等于没测").toBe(true);
+    // 这一组参数必须同时踩到三条默认路径走不到的分支，否则这个用例是空的
+    expect(t.lift_chroma_only, "基准没走到 liftChromaOnly").toBe(true);
+    expect(t.dither_amount, "基准把抖动关了，抖动块那条路一步也走不到").toBeGreaterThan(0);
+    expect(t.dither_block, "基准的抖动块是 1，等于没放大").toBeGreaterThan(1);
     for (const key of ["W", "Y", "M", "C"] as const) {
       const got = layers[key];
       const want = auto[key];

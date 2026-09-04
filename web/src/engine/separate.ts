@@ -79,6 +79,15 @@ export interface SeparateOptions {
    * 纯靠中性底顶上来的配角色不抬。
    */
   liftChromaOnly?: boolean;
+  /**
+   * 抖动格子放大多少倍。1 = 每个网格一个抖动决定（默认，也就是原来的行为）。
+   *
+   * 抖动是拿相邻格子的层数高低差换视觉上的中间色，格子比喷嘴小的时候这笔交易
+   * 不成立：0.1mm/px 下一个孤立抖动点只有喷嘴面积的十六分之一，印不出来，
+   * 只会变成多余的三角形，或者被挤成 0.4mm 的一颗麻点。放大到喷嘴尺寸之后，
+   * 每个抖动决定落到实物上正好是一个印得出来的点。
+   */
+  ditherBlock?: number;
   /** 白底层数，默认 4。 */
   minWhiteLayers?: number;
 }
@@ -108,6 +117,7 @@ function quantize(
   keepMask: Uint8Array | null,
   keepFloor: number,
   neutral: Float32Array | null,
+  ditherBlock: number,
 ): Int32Array {
   const n = need.length;
   const out = new Int32Array(n);
@@ -118,10 +128,12 @@ function quantize(
     let x = need[i];
 
     if (dither) {
-      // Bayer 矩阵按 4×4 平铺，索引与 numpy 的 np.tile 一致
+      // Bayer 矩阵按 4×4 平铺；ditherBlock > 1 时每格放大成 block×block
       const y = (i / gridW) | 0;
       const col = i - y * gridW;
-      const bayer = BAYER4[(y & 3) * 4 + (col & 3)];
+      const by = ((y / ditherBlock) | 0) & 3;
+      const bx = ((col / ditherBlock) | 0) & 3;
+      const bayer = BAYER4[by * 4 + bx];
       x = f(x + f(bayer * amount));
     }
 
@@ -159,6 +171,7 @@ export function separateCMYW(
   const ditherAmount = options.ditherAmount ?? LAYER_DITHER_AMT;
   const keepFloor = options.keepFloor ?? LAYER_KEEP_FLOOR;
   const liftChromaOnly = options.liftChromaOnly ?? false;
+  const ditherBlock = Math.max(1, Math.round(options.ditherBlock ?? 1));
   const whiteLayers = options.minWhiteLayers ?? MIN_WHITE_LAYERS;
 
   // 白底在每个通道贡献的固定密度。Python 侧此处是 float64 运算。
@@ -220,9 +233,9 @@ export function separateCMYW(
 
   return {
     W,
-    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor, neutral),
-    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor, neutral),
-    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor, neutral),
+    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor, neutral, ditherBlock),
+    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor, neutral, ditherBlock),
+    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor, neutral, ditherBlock),
     gridW,
     gridH,
   };

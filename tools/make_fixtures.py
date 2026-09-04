@@ -36,6 +36,7 @@ from main import (  # noqa: E402
     dither_amount_for,
     flatness_of,
     generate_cmyw_layers,
+    dither_block_for,
     keep_floor_for,
     lift_chroma_only_for,
     merge_voxel_rectangles,
@@ -128,15 +129,23 @@ def main(argv: list[str]) -> int:
                 "lift_chroma_only": lift_chroma_only_for(f),
                 "merge_filter": mesh_merge_filter_for(f),
                 "mm_per_px": mm_per_px_for(f),
+                "dither_block": dither_block_for(mm_per_px_for(f)),
             }
         )
 
-    tuned_flat = 0.8  # 插画档：门槛压到两成、免滤波、彩色度判据打开
+    # 插画档，但**抖动还没归零**：0.8 那一档 dither_amount 正好是 0，
+    # 抖动块那条路就一步也走不到，等于没测。0.6 同时满足门槛压低、免滤波、
+    # 彩色度判据打开、抖动仍开着 —— 四条分支一次全覆盖。
+    tuned_flat = 0.6
+    # 抖动块固定取 0.1mm/px 那一档（block=4），基准才走得到 block > 1 那条路 ——
+    # 基准网格本身是 64×48 铺 100mm，算出来 block 就是 1，跟着它走等于没测
     tuned = {
         "flatness": tuned_flat,
         "dither_amount": dither_amount_for(tuned_flat),
         "keep_floor": keep_floor_for(tuned_flat),
         "lift_chroma_only": lift_chroma_only_for(tuned_flat),
+        "mm_per_px": 0.10,
+        "dither_block": dither_block_for(0.10),
     }
     tuned_rgb = np.clip(rgb.astype(np.float32) / 255.0, RGB_CLIP_MIN, 1.0)
     tw, ty, tm, tc = _layers_from_rgb_v2(
@@ -146,6 +155,7 @@ def main(argv: list[str]) -> int:
         dither_amount=tuned["dither_amount"],
         keep_floor=tuned["keep_floor"],
         lift_chroma_only=tuned["lift_chroma_only"],
+        dither_block=tuned["dither_block"],
     )
     auto = {
         "grid_w": GRID_W,

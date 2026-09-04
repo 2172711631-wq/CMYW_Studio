@@ -164,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         target_grid_h=grid_h,
         dither=not args.no_dither,
         color_profile=args.profile,
+        mm_per_px=width / grid_w,
     )
     if not layers:
         print(f"错误 / error: 无法解析图片 / cannot decode image: {image_path}", file=sys.stderr)
