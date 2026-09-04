@@ -136,9 +136,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         from main import (
             ShellParams,
+            auto_mm_per_px,
             generate_cmyw_layers,
             grid_h_for_print,
-            grid_w_for_print,
             save_as_bambu_3mf,
         )
     except ImportError as exc:
@@ -148,10 +148,15 @@ def main(argv: list[str] | None = None) -> int:
 
     width = float(args.width)
     height = float(args.height) if args.height else None
-    grid_w = grid_w_for_print(width, "auto")
+    # 先看一眼图再定网格密度：插画靠细线吃饭，格子要密；照片标准密度就够。
+    mpp = auto_mm_per_px(str(image_path))
+    grid_w = int(max(80, min(1600, round(width / mpp))))
     grid_h = grid_h_for_print(width, height, grid_w=grid_w) if height else None
 
-    say(f"分色中 / separating colours ... (网格 / grid {grid_w}×{grid_h or 'auto'})")
+    say(
+        f"分色中 / separating colours ... "
+        f"(网格 / grid {grid_w}×{grid_h or 'auto'}, {mpp:.2f} mm/px)"
+    )
     started = time.perf_counter()
     layers = generate_cmyw_layers(
         str(image_path),

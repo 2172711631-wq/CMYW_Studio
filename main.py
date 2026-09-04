@@ -156,6 +156,109 @@ def load_image_bgr(image_path: str) -> np.ndarray | None:
     return image
 
 
+# =============================================================================
+# 按画风自动取值
+#
+# 这一套判据和网页端 web/src/ui/studio.ts 里的是同一份，搬过来是因为两边分开
+# 各调各的，同一张图桌面 App 和网站就会出两张不一样的画片 —— 而它们本该是
+# 同一个产品的两个入口。
+#
+# 分工也照搬网页：**引擎的默认值一个不动**（parity fixture 钉的就是它们），
+# 自动取值是应用层的策略，由 generate_cmyw_layers 算好再传下去。
+# =============================================================================
+
+# 量平坦度用的探针尺寸。太小量不准，太大白费时间；网页端也是 192。
+FLATNESS_PROBE = 192
+
+
+def flatness_of(img: np.ndarray) -> float:
+    """量这张图有多"平"：相邻像素几乎没有差别的比例。
+
+    平色插画大片同色 → 高；照片就算降采样过也到处是细微渐变 → 低。
+    拿它在"照片"和"插画"之间连续取值，比让人自己二选一细腻 ——
+    真实素材（带纹理的厚涂、有噪点的扫描线稿）大多落在中间。
+
+    **只量，不缩**。缩放放在 flatness_probe() 里 —— 这个分工要和 TS 侧一致，
+    否则两边同名函数吃的其实是不同分辨率的图，量出来的数当然对不上，
+    而且这种错在各自单测里都看不出来。
+    """
+    a = img.astype(np.int16)
+    right = np.abs(a[:-1, :-1] - a[:-1, 1:]).max(axis=2)
+    down = np.abs(a[:-1, :-1] - a[1:, :-1]).max(axis=2)
+    return float((np.maximum(right, down) <= 2).mean())
+
+
+def flatness_probe(img_bgr: np.ndarray) -> float:
+    """流水线用：先缩到探针尺寸再量。太小量不准，太大白费时间。"""
+    probe = cv2.resize(
+        img_bgr, (FLATNESS_PROBE, FLATNESS_PROBE), interpolation=cv2.INTER_AREA
+    )
+    return flatness_of(probe)
+
+
+def art_score(flat: float) -> float:
+    """平坦度 → 0（照片）..1（插画）。两端阈值按降采样后的实测量级定。"""
+    return float(min(1.0, max(0.0, (flat - 0.35) / 0.4)))
+
+
+def dither_amount_for(flat: float) -> float:
+    """抖动幅度：按平坦度在照片档和插画档之间连续取值。
+
+    抖动是给照片打散层数台阶用的，落在平色插画上只会撒麻点、咬断细线。
+    """
+    return float(LAYER_DITHER_AMT) * (1.0 - art_score(flat))
+
+
+def keep_floor_for(flat: float) -> float:
+    """浅色保留阈值：越"平"压得越低，最低压到默认值的两成。
+
+    这条线在照片里挡的是噪点，在线稿里挡掉的却是淡线和抗锯齿边 ——
+    而平色画面本来就没有噪点要挡。
+    """
+    return float(LAYER_KEEP_FLOOR) * (1.0 - 0.8 * art_score(flat))
+
+
+def lift_chroma_only_for(flat: float) -> bool:
+    """门槛一降就必须同时打开它，否则降下来的门槛会被中性底顶穿。
+
+    need = 这一色自己的彩色度 + k_back（三色平摊的中性成分）。门槛压在 need 上时，
+    彩色度为 0 的通道也能靠 k_back 顶过去，被抬成整整一层：饱和蓝里多一层黄就发绿，
+    中性灰细线里多一层品红就发粉。这两种情况只在门槛降下来之后才够得着，
+    所以这两件事是同一个开关的两半，不该分开。
+    """
+    return keep_floor_for(flat) < float(LAYER_KEEP_FLOOR)
+
+
+def mesh_merge_filter_for(flat: float) -> int:
+    """网格化前的中值滤波：线稿要关掉，否则 1–2 像素宽的笔画会被抹平。
+
+    代价是矩形变多、三角形涨。
+    """
+    return 1 if art_score(flat) > 0.5 else int(MESH_MERGE_FILTER)
+
+
+def mm_per_px_for(flat: float) -> float:
+    """网格密度 mm/px：插画靠细线吃饭，格子给密一点。
+
+    照片是连续调，标准密度就够，再密只是把三角形和文件撑大。
+    喷嘴 0.4mm 是物理下限，0.1 已经比它细一倍，继续加不增加细节。
+    """
+    k = art_score(flat)
+    if k > 0.6:
+        return 0.10
+    if k > 0.3:
+        return 0.15
+    return float(UNIFIED_MM_PER_PX)
+
+
+def auto_mm_per_px(image_path: str) -> float:
+    """先看一眼图再定网格密度。读不出图就退回统一密度。"""
+    img = load_image_bgr(image_path)
+    if img is None:
+        return float(UNIFIED_MM_PER_PX)
+    return mm_per_px_for(flatness_probe(img))
+
+
 def resolution_to_mm_per_px(resolution: int | float | str | None) -> float:
     """档位 → mm/像素。None / 统一模式 → UNIFIED_MM_PER_PX。"""
     if resolution is None or resolution == "" or resolution == "auto":
@@ -210,6 +313,7 @@ def generate_cmyw_layers(
     target_grid_h: int | None = None,
     dither: bool | None = None,
     color_profile: str | None = None,
+    auto_tune: bool = True,
 ) -> dict | None:
     """
     RGB → CMYW 层数：从图片提取 C/M/Y 光学密度并堆叠（v2），白底固定。
@@ -219,6 +323,24 @@ def generate_cmyw_layers(
     img_bgr = load_image_bgr(image_path)
     if img_bgr is None:
         return None
+
+    # 平坦度必须在缩到打印网格**之前**量：网格重采样本身会抹掉细微渐变，
+    # 量出来的"平"就不是这张画的平，而是网格密度的平。网页端也是先在
+    # 192×192 的探针上量，再决定参数。
+    flat = flatness_probe(img_bgr) if auto_tune else 0.0
+    tune = (
+        {
+            "flatness": round(flat, 4),
+            "art_score": round(art_score(flat), 4),
+            "dither_amount": round(dither_amount_for(flat), 4),
+            "keep_floor": round(keep_floor_for(flat), 4),
+            "lift_chroma_only": lift_chroma_only_for(flat),
+            "merge_filter": mesh_merge_filter_for(flat),
+            "mm_per_px": mm_per_px_for(flat),
+        }
+        if auto_tune
+        else None
+    )
 
     if target_grid_w and target_grid_w > 0:
         tw = int(target_grid_w)
@@ -241,12 +363,19 @@ def generate_cmyw_layers(
         )
     else:
         n_w, n_y, n_m, n_c = _layers_from_rgb_v2(
-            img_rgb, min_white_layers, dither=use_dither
+            img_rgb,
+            min_white_layers,
+            dither=use_dither,
+            dither_amount=tune["dither_amount"] if tune else None,
+            keep_floor=tune["keep_floor"] if tune else None,
+            lift_chroma_only=bool(tune["lift_chroma_only"]) if tune else False,
         )
 
     result = {"C": n_c, "M": n_m, "Y": n_y, "W": n_w, "shape": img_bgr.shape}
     result["stats"] = layer_stats(result)
     result["color_profile"] = profile
+    if tune is not None:
+        result["auto"] = tune
     return result
 
 
@@ -262,14 +391,23 @@ def _quantize_layers(
     *,
     dither: bool,
     keep_mask: np.ndarray | None = None,
+    dither_amount: float | None = None,
+    keep_floor: float | None = None,
+    neutral: np.ndarray | None = None,
 ) -> np.ndarray:
-    """浮点需求层 → 整数层；抖动减少丢浅色与等高线。"""
+    """浮点需求层 → 整数层；抖动减少丢浅色与等高线。
+
+    dither_amount / keep_floor 不传就用模块常数，也就是原来的行为。
+    neutral 传进来时，抬浅层的判据先把中性底扣掉 —— 见 lift_chroma_only_for()。
+    """
+    amount = float(LAYER_DITHER_AMT if dither_amount is None else dither_amount)
     x = need.astype(np.float32)
-    if dither:
-        x = x + _bayer_tile(*x.shape) * float(LAYER_DITHER_AMT)
+    if dither and amount > 0.0:
+        x = x + _bayer_tile(*x.shape) * amount
     # 仅在 keep_mask（有色度）区域抬浅层，避免灰底/高光被三色薄雾铺满
-    floor = float(LAYER_KEEP_FLOOR)
-    lift = (need >= floor) & (x < 0.5)
+    floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor)
+    weight = need if neutral is None else (need - neutral)
+    lift = (weight >= floor) & (x < 0.5)
     if keep_mask is not None:
         lift = lift & keep_mask.astype(bool)
     x = np.where(lift, 0.51, x)
@@ -298,6 +436,9 @@ def _layers_from_rgb_v2(
     min_white_layers: int,
     *,
     dither: bool,
+    dither_amount: float | None = None,
+    keep_floor: float | None = None,
+    lift_chroma_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """从图片直接提取 C/M/Y 三色并堆叠（随图自适应，无偏色补偿旋钮）。
 
@@ -335,12 +476,21 @@ def _layers_from_rgb_v2(
     m = m_chr + k_back
     y = y_chr + k_back
 
-    # 有彩色墨才抬浅层（阈值与 LAYER_KEEP_FLOOR 对齐，避免双旋钮漂移）
-    keep_mask = (c_chr + m_chr + y_chr) >= float(LAYER_KEEP_FLOOR)
+    # 有彩色墨才抬浅层（阈值与 keep_floor 对齐，避免双旋钮漂移）
+    floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor)
+    keep_mask = (c_chr + m_chr + y_chr) >= floor
+    neutral = k_back if lift_chroma_only else None
 
-    n_c = _quantize_layers(c, MAX_LAYERS_C, dither=dither, keep_mask=keep_mask)
-    n_m = _quantize_layers(m, MAX_LAYERS_M, dither=dither, keep_mask=keep_mask)
-    n_y = _quantize_layers(y, MAX_LAYERS_Y, dither=dither, keep_mask=keep_mask)
+    kw = {
+        "dither": dither,
+        "keep_mask": keep_mask,
+        "dither_amount": dither_amount,
+        "keep_floor": keep_floor,
+        "neutral": neutral,
+    }
+    n_c = _quantize_layers(c, MAX_LAYERS_C, **kw)
+    n_m = _quantize_layers(m, MAX_LAYERS_M, **kw)
+    n_y = _quantize_layers(y, MAX_LAYERS_Y, **kw)
     return n_w, n_y, n_m, n_c
 
 
@@ -935,8 +1085,9 @@ def save_as_bambu_3mf(
 
     resized = resize_layers(layers_dict, grid_w)
     l_w, l_y, l_m, l_c = resized.w, resized.y, resized.m, resized.c
-    # 轻度中值：同层高连成片，矩形合并↑、切片更快（不改分色逻辑，只平滑层高台阶）
-    filt = int(MESH_MERGE_FILTER)
+    # 轻度中值：同层高连成片，矩形合并↑、切片更快（不改分色逻辑，只平滑层高台阶）。
+    # 插画档会把它关掉（filt=1），否则 1–2 像素宽的笔画会被整条抹平。
+    filt = int((layers_dict.get("auto") or {}).get("merge_filter", MESH_MERGE_FILTER))
     if filt >= 3:
         l_w = _mesh_merge_filter(l_w, size=filt)
         l_y = _mesh_merge_filter(l_y, size=filt)

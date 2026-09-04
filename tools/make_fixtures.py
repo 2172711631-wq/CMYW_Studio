@@ -26,11 +26,21 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
 from main import (  # noqa: E402
+    MIN_WHITE_LAYERS,
+    RGB_CLIP_MIN,
+    _layers_from_rgb_v2,
     _mesh_merge_filter,
     apply_rounded_corner_mask,
+    art_score,
     compute_z_stacks,
+    dither_amount_for,
+    flatness_of,
     generate_cmyw_layers,
+    keep_floor_for,
+    lift_chroma_only_for,
     merge_voxel_rectangles,
+    mesh_merge_filter_for,
+    mm_per_px_for,
 )
 
 # 基准图要有全色域覆盖，否则测不到 UCR 与浅色保底的分支
@@ -70,6 +80,9 @@ def main(argv: list[str]) -> int:
         target_grid_h=GRID_H,
         dither=True,
         color_profile="v2",
+        # 基准钉的是**引擎默认值**，不是应用层的自动取值 —— 网页端那边
+        # separateCMYW 的默认参数也没变，两边才对得上。
+        auto_tune=False,
     )
     if not layers:
         print(f"分色失败 / separation failed: {source}", file=sys.stderr)
@@ -92,6 +105,59 @@ def main(argv: list[str]) -> int:
         "Y": ly.reshape(-1).tolist(),
         "M": lm.reshape(-1).tolist(),
         "C": lc.reshape(-1).tolist(),
+    }
+
+    # --- 自动取值基准 ---
+    # 上面那份钉的是引擎默认参数；这份钉的是两件默认路径根本走不到的事：
+    #
+    #   1. **选参数的公式**。它在 web/src/engine/autotune.ts 和 main.py 各有一份，
+    #      分叉了不会报错，只会让同一张图在桌面 App 和网站上出两张不一样的画片。
+    #      所以扫一遍整条曲线（含两端阈值），逐点对。
+    #   2. **lift_chroma_only 那条分支**下引擎的输出。参数直接取插画档那一组，
+    #      不跟着这张基准图的实际平坦度走 —— 基准图是色卡，本身并不"平"，
+    #      跟着它走就永远测不到这条分支。
+    curve = []
+    for i in range(21):
+        f = i / 20.0
+        curve.append(
+            {
+                "flatness": f,
+                "art_score": art_score(f),
+                "dither_amount": dither_amount_for(f),
+                "keep_floor": keep_floor_for(f),
+                "lift_chroma_only": lift_chroma_only_for(f),
+                "merge_filter": mesh_merge_filter_for(f),
+                "mm_per_px": mm_per_px_for(f),
+            }
+        )
+
+    tuned_flat = 0.8  # 插画档：门槛压到两成、免滤波、彩色度判据打开
+    tuned = {
+        "flatness": tuned_flat,
+        "dither_amount": dither_amount_for(tuned_flat),
+        "keep_floor": keep_floor_for(tuned_flat),
+        "lift_chroma_only": lift_chroma_only_for(tuned_flat),
+    }
+    tuned_rgb = np.clip(rgb.astype(np.float32) / 255.0, RGB_CLIP_MIN, 1.0)
+    tw, ty, tm, tc = _layers_from_rgb_v2(
+        tuned_rgb,
+        MIN_WHITE_LAYERS,
+        dither=tuned["dither_amount"] > 0.0,
+        dither_amount=tuned["dither_amount"],
+        keep_floor=tuned["keep_floor"],
+        lift_chroma_only=tuned["lift_chroma_only"],
+    )
+    auto = {
+        "grid_w": GRID_W,
+        "grid_h": GRID_H,
+        # 直接量基准网格本身（不经探针缩放），TS 侧吃同一个数组才对得上
+        "flatness_of_grid": flatness_of(rgb),
+        "curve": curve,
+        "tuned": tuned,
+        "W": tw.reshape(-1).tolist(),
+        "Y": ty.reshape(-1).tolist(),
+        "M": tm.reshape(-1).tolist(),
+        "C": tc.reshape(-1).tolist(),
     }
 
     # --- 网格化基准 ---
@@ -121,6 +187,8 @@ def main(argv: list[str]) -> int:
 
     for name, payload in (
         ("separation-reference.json", separation),
+        ("separation-auto-reference.json", auto),
+        ("separation-auto-reference.json", auto),
         ("mesh-reference.json", mesh),
     ):
         path = OUT_DIR / name
