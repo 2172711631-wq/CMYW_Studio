@@ -105,7 +105,7 @@ GROOVE_Y = 24.0       # 插槽中心距底座前沿。靠前放，后面才腾�
 #
 # 顺带两个好处：插深从 10 变成 14.4（= BASE_T − COVER_T），晃动量跟着降；
 # 画片的重量直接压在底盖上，而底盖是与底面齐平坐在桌上的，不吃弯。
-GROOVE_FIT = 0.25
+GROOVE_FIT = 0.12       # 实物偏松、画框会晃，从 0.25 收到 0.12
 COVER_EDGE = 2.8      # 底盖四周留给外壁的宽度
 TILT = 0.0            # 90° 直立。要回后仰版把这里改回 8
 BASE_R = 6.0
@@ -113,34 +113,45 @@ BASE_R = 6.0
 BASE_WIRE_W = 6.0
 BASE_WIRE_H = 3.0
 
-# —— 电池仓（尺寸按常见件预设，换件改这里）——
-# 预设：103450 软包锂电（10×34×50，约 2000mAh）+ USB-C 充电升压一体板 + 侧拨开关
-# 电池横着放：长边沿 X（底座宽 176mm，随便放），短边沿 Y（吃电池仓的进深）
-BAT_LONG = 52.0       # 电池长边（沿 X）
-BAT_SHORT = 36.0      # 电池短边（沿 Y）—— 电池仓进深要大于它
-BAT_H = 10.5          # 电池厚 —— 电池仓净高要大于它
-PCB_W = 30.0          # 电路板槽
-PCB_D = 20.0
-PCB_H = 7.0
+# —— 电池仓（按手上的实物件定）——
+# 电池：523450 锂电 1000mAh 带保护板。裸电芯 5.2×34×50，
+#       保护板贴在短边上，长度按 52 算，厚度留到 6.0（软包会鼓一点）。
+# 电路板：图里那块半圆板，35.5 × 18.8，Type-C 焊在直边正中。
+# 电池横着放：长边沿 X，短边沿 Y（吃电池仓的进深）。
+BAT_LONG = 52.0       # 电池长边（沿 X），含保护板
+BAT_SHORT = 34.0      # 电池短边（沿 Y）—— 电池仓进深要大于它
+BAT_H = 6.0           # 电池厚 —— 电池仓净高要大于它
+PCB_W = 35.5          # 电路板宽（沿 X）
+PCB_D = 18.8          # 电路板深（沿 Y）
+PCB_H = 7.0           # 连 Type-C 壳一起的最高点
 # 背面 USB-C 开口。尺寸和圆角照抄灯箱那个母本（web/src/engine/shell.ts 的 USB）——
 # 切成直角方口插头也塞得进，但四角各露一块空隙，插头还不被孔壁扶正，手感和外观都是坏的。
 USB_W = 9.3
 USB_H = 3.5
 USB_R = 1.65
-USB_Z = 4.0           # 开口下沿距仓底
+# 开口下沿距仓底 = 板子坐在仓底时，Type-C 壳底离板底的高度。
+# 这个数直接抄灯箱母本（web/src/engine/shell.ts 的 USB.liftZ）—— 那边是
+# 「躺倒的外壳，内底面到 Type-C 口底」，和这里是同一个量，也正是这块板的高度。
+USB_Z = 1.55
+# Type-C 靠左摆：板子 35.5 宽，贴着电池仓左端放，右边整条留给 52mm 的电池。
+# 居中的话板子会把仓从中间劈开，两边谁都放不下电池。
+USB_X = -1.0          # <0 = 靠左，0 = 居中，>0 = 靠右
 
 # —— 侧面触摸 ——
 # 拨动开关换成侧面轻触。开关要在壳上开个洞、还要对准拨柄，触摸只要一块够薄够实的壁。
 # 「实」比「薄」更要紧：稀疏填充里全是空腔，电容耦合会被吃掉大半，所以触摸区那块
 # 必须 100% 填充 —— 和灯箱顶面触摸用的是同一招（buildTopSolidModifier），
 # 这里由 build_touch_solid() 出一块修改器体，在切片器里挂上去。
-TOUCH_W = 16.0        # 触摸模块（TTP223 一类）的座宽
-TOUCH_H = 9.0         # 座高。电池仓净高就那么点，别超
-TOUCH_SEAT = 1.0      # 模块沉进座里多少
-TOUCH_WALL = 1.5      # 触摸区剩下的壁厚。4mm 实心 PLA 也能触发，但 1.5 稳得多
-TOUCH_MARK_W = 26.0   # 外表面那圈浅指示凹坑，手摸得到才知道往哪按
-TOUCH_MARK_H = 10.0
-TOUCH_MARK_D = 0.4
+# —— 侧面触摸（右侧壁）——
+# 内壁保持平的：铜箔是贴上去的，一凹进去就贴不平、贴不牢。所以不掏座、不减壁，
+# 只在外面凸一块当指示 —— 手摸得到才知道往哪按。
+# 代价是感应要穿过整道 4mm 侧壁再加这块凸台，比原来的 1.5mm 厚不少，
+# 所以触摸区 100% 填充这一步（ringframe_touch_modifier）从"建议"变成"必须"。
+TOUCH_SIDE = 1        # +1 = 右侧壁，-1 = 左侧壁
+TOUCH_PAD_W = 26.0    # 外凸指示块，沿 Y
+TOUCH_PAD_H = 10.0    # 沿 Z
+TOUCH_PAD_OUT = 1.2   # 凸出侧壁多少
+TOUCH_PAD_R = 3.0     # 凸块圆角，别硌手
 BAY_WALL = 2.5        # 电池仓顶壁（也就是底座上表面那层）
 COVER_T = 1.6         # 底盖厚
 COVER_FIT = 0.3
@@ -196,6 +207,13 @@ def params() -> dict[str, float]:
         # 盘底减掉四周那圈灯带之后，中间还剩多大一块没有直射光
         "dark_w": cav_w - 2.0 * LED_W,
         "dark_h": cav_h - 2.0 * LED_W,
+        # Type-C 在 X 上的位置：板子贴着仓的一端放，孔跟着板子中心走
+        "usb_cx": (
+            0.0
+            if abs(USB_X) < 1e-9
+            else (1.0 if USB_X > 0 else -1.0)
+            * (((frame_w + 2.0 * BASE_MARGIN) / 2.0 - 4.0) - PCB_W / 2.0 - 2.0)
+        ),
         # 触摸区在底座侧壁上，壁厚由电池仓的让位决定
         "side_wall": ((frame_w + 2.0 * BASE_MARGIN) / 2.0) - ((frame_w + 2.0 * BASE_MARGIN) / 2.0 - 4.0),
         "bevel": min(BACK_BEVEL, max(0.0, FRAME_R - 0.8)),
@@ -488,29 +506,33 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
         )
     )
 
-    # 背面 Type-C：圆角口，尺寸照灯箱母本
+    # 背面 Type-C：圆角口，尺寸照灯箱母本；靠一边摆，把电池那条留整
+    usb_cx = p["usb_cx"]
     base = base.cut(
         _round_slot(
             USB_W, USB_H, USB_R,
             p["bay_y1"] - 1.0, BASE_D + 1.0,
+            cx=usb_cx,
             cz=z_bay0 + USB_Z + USB_H / 2.0,
         )
     )
 
-    # 侧面触摸：外面一个浅指示坑，里面一个模块座，中间留 TOUCH_WALL 的壁
+    # 侧面触摸：只在外面凸一块指示，内壁不动 —— 铜箔要贴在平的内壁上
+    sx = 1.0 if TOUCH_SIDE >= 0 else -1.0
     tx = p["base_w"] / 2.0
     ty = (p["bay_y0"] + p["bay_y1"]) / 2.0
     tz = z_bay0 + p["bay_h"] / 2.0
-    base = base.cut(                       # 外侧：摸得到的指示坑
-        _box_xyz(-tx - 1.0, -tx + TOUCH_MARK_D,
-                 ty - TOUCH_MARK_W / 2.0, ty + TOUCH_MARK_W / 2.0,
-                 tz - TOUCH_MARK_H / 2.0, tz + TOUCH_MARK_H / 2.0)
-    )
-    base = base.cut(                       # 内侧：模块座，挖到只剩 TOUCH_WALL
-        _box_xyz(-tx + TOUCH_WALL, -bay_x + 0.01,
-                 ty - TOUCH_W / 2.0, ty + TOUCH_W / 2.0,
-                 tz - TOUCH_H / 2.0, tz + TOUCH_H / 2.0)
-    )
+    if TOUCH_PAD_OUT > 1e-4:
+        pad = (
+            cq.Workplane("XY")
+            .box(TOUCH_PAD_OUT + 0.6, TOUCH_PAD_W, TOUCH_PAD_H, centered=(False, True, True))
+            .translate((sx * tx - (0.6 if sx > 0 else TOUCH_PAD_OUT), ty, tz))
+        )
+        try:
+            pad = pad.edges("|X").fillet(TOUCH_PAD_R)
+        except Exception:  # noqa: BLE001
+            pass
+        base = base.union(pad)
 
     if print_orientation:
         base = base.rotate((0, 0, 0), (1, 0, 0), 180)
@@ -553,14 +575,18 @@ def build_touch_solid() -> cq.Workplane:
     电容耦合会被吃掉大半，触摸时灵时不灵，问题就出在这儿。灯箱的顶面触摸也是这么做的。
     """
     p = params()
+    sx = 1.0 if TOUCH_SIDE >= 0 else -1.0
     tx = p["base_w"] / 2.0
     ty = (p["bay_y0"] + p["bay_y1"]) / 2.0
-    tz = COVER_T + COVER_LIP + p["bay_h"] / 2.0
+    tz = COVER_T + p["bay_h"] / 2.0
     pad = 3.0  # 四周多罩一点，别让修改器边界正好压在触摸区边上
+    x0 = sx * tx - (0.0 if sx > 0 else TOUCH_PAD_OUT + 1.0)
+    x1 = sx * tx + (TOUCH_PAD_OUT + 1.0 if sx > 0 else 0.0)
+    inner = sx * (tx - 4.5)   # 罩穿整道侧壁：铜箔贴内壁，中间不能有稀疏填充
     return _box_xyz(
-        -tx - 0.5, -tx + TOUCH_WALL + 1.0,
-        ty - TOUCH_MARK_W / 2.0 - pad, ty + TOUCH_MARK_W / 2.0 + pad,
-        tz - TOUCH_MARK_H / 2.0 - pad, tz + TOUCH_MARK_H / 2.0 + pad,
+        min(x0, x1, inner), max(x0, x1, inner),
+        ty - TOUCH_PAD_W / 2.0 - pad, ty + TOUCH_PAD_W / 2.0 + pad,
+        tz - TOUCH_PAD_H / 2.0 - pad, tz + TOUCH_PAD_H / 2.0 + pad,
     )
 
 
@@ -874,13 +900,15 @@ def spec() -> list[tuple[str, str]]:
         (
             "电路板",
             f'{PCB_W:.0f} × {PCB_D:.0f} × {PCB_H:.0f} mm 的位；'
-            f"背面 Type-C {USB_W:.1f}×{USB_H:.1f}（R{USB_R}，同灯箱）",
+            f"背面 Type-C {USB_W:.1f}×{USB_H:.1f}（R{USB_R}，同灯箱），"
+            f"口底离仓底 {USB_Z} mm、{'靠左' if USB_X < 0 else ('靠右' if USB_X > 0 else '居中')}",
         ),
         (
             "侧面触摸",
-            f"左侧壁，模块座 {TOUCH_W:.0f}×{TOUCH_H:.0f}，剩壁厚 {TOUCH_WALL:.1f}；"
-            f"外面 {TOUCH_MARK_W:.0f}×{TOUCH_MARK_H:.0f} 浅坑指示。"
-            f"**触摸区必须 100% 填充** —— 用 ringframe_touch_modifier 当修改器",
+            f"{'右' if TOUCH_SIDE >= 0 else '左'}侧壁，内壁保持平的（铜箔贴内壁）；"
+            f"外面凸 {TOUCH_PAD_W:.0f}×{TOUCH_PAD_H:.0f}×{TOUCH_PAD_OUT:.1f} 指示块。"
+            f"感应要穿整道 4mm 侧壁，**触摸区必须 100% 填充** —— "
+            f"用 ringframe_touch_modifier 当修改器，这步不能省",
         ),
         ("摆盘", f"ringframe.3mf —— 一盘四件：{_plate_note()}"),
     ]

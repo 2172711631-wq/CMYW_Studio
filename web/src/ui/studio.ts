@@ -198,6 +198,22 @@ function drawCrop(): void {
   const ctx = els.cropCanvas.getContext("2d");
   if (!ctx) return;
   paintFramed(ctx, source.bitmap, els.cropCanvas.width, els.cropCanvas.height);
+
+  // 把压边盖住的那一圈标出来 —— 不标的话没人知道构图不能顶到边
+  const bezel = bezelMm();
+  if (bezel > 0) {
+    const inset = (bezel / artSizeMm().w) * els.cropCanvas.width;
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.rect(0, 0, els.cropCanvas.width, els.cropCanvas.height);
+    ctx.rect(
+      inset, inset,
+      els.cropCanvas.width - 2 * inset, els.cropCanvas.height - 2 * inset,
+    );
+    ctx.fill("evenodd");
+    ctx.restore();
+  }
 }
 
 function initCrop(): void {
@@ -295,6 +311,37 @@ function mmPerPx(): number {
   return mmPerPxFor(lastFlatness);
 }
 
+/** 立牌外壳的取景窗尺寸。压边会盖住画片外圈一整条，那一条印什么都看不见。
+ *
+ * 数字从烘好的壳里取，不在这边另写一份 —— 压边宽度是 CAD 母本的参数，
+ * 抄一份在前端，改了母本这边就悄悄对不上了。 */
+const standeeWindow = new Map<string, { w: number; h: number }>();
+
+async function loadStandeeWindow(w: number, h: number): Promise<{ w: number; h: number } | null> {
+  const key = `${w}x${h}`;
+  const hit = standeeWindow.get(key);
+  if (hit) return hit;
+  try {
+    const res = await fetch(`/standee/${key}.json`);
+    if (!res.ok) return null;
+    const raw = (await res.json()) as { windowW: number; windowH: number };
+    const win = { w: raw.windowW, h: raw.windowH };
+    standeeWindow.set(key, win);
+    return win;
+  } catch {
+    return null;   // 取不到就当没有压边，画满 —— 不该因为一次网络失败就不能用
+  }
+}
+
+/** 画片四周被压边盖住的宽度（mm）。非立牌返回 0。 */
+function bezelMm(): number {
+  if (shape !== "standee") return 0;
+  const { w, h } = standeeMm();
+  const win = standeeWindow.get(`${w}x${h}`);
+  if (!win) return 0;
+  return Math.max(0, Math.min((w - win.w) / 2, (h - win.h) / 2));
+}
+
 /** 立牌选中的画幅。壳子按同一个数去 /standee/ 取烘好的网格，尺寸不会各走各的。 */
 function standeeMm(): { w: number; h: number } {
   const [w, h] = els.standeeSize.value.split("x").map(Number);
@@ -384,11 +431,27 @@ function resample(
   if (!ctx) throw new Error(t("浏览器不支持 Canvas", "Canvas is unavailable"));
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
+
+  // 压边盖住的那一圈留白，画整个缩进可见窗口里。
+  //
+  // 不能只是裁掉：裁掉的话构图顶到边的东西（比如气泡框）照样丢，只是从"被挡住"
+  // 变成"被切掉"。要的是整幅都看得见，所以是缩，不是切。
+  const bezel = bezelMm();
+  const inset = bezel > 0 ? Math.round((bezel / artSizeMm().w) * gridW) : 0;
+  if (inset > 0) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, gridW, gridH);
+    ctx.save();
+    ctx.translate(inset, inset);
+    ctx.scale((gridW - 2 * inset) / gridW, (gridH - 2 * inset) / gridH);
+  }
+
   if (framed) {
     paintFramed(ctx, bitmap, gridW, gridH);
   } else {
     ctx.drawImage(bitmap, 0, 0, gridW, gridH);
   }
+  if (inset > 0) ctx.restore();
   const rgba = ctx.getImageData(0, 0, gridW, gridH).data;
 
   // 引擎吃紧凑的 RGB，去掉 alpha 通道
@@ -737,8 +800,22 @@ els.badgeSize.addEventListener("change", () => {
 els.standeeSize.addEventListener("change", () => {
   if (source) resetCrop();
   syncShapeFields();
+  void ensureStandeeWindow();
   requestPreview();
 });
+
+/** 立牌模式下把外壳的窗口尺寸取回来，取到了再重画一次（压边那圈才画得出来）。 */
+async function ensureStandeeWindow(): Promise<void> {
+  if (shape !== "standee") return;
+  const { w, h } = standeeMm();
+  if (standeeWindow.has(`${w}x${h}`)) return;
+  if (await loadStandeeWindow(w, h)) {
+    if (source) {
+      drawCrop();
+      requestPreview();
+    }
+  }
+}
 els.density.addEventListener("change", requestPreview);
 initCrop();
 els.shapeSwitch.querySelectorAll<HTMLButtonElement>("[data-shape]").forEach((btn) => {
@@ -746,6 +823,7 @@ els.shapeSwitch.querySelectorAll<HTMLButtonElement>("[data-shape]").forEach((btn
     const next = (btn.dataset.shape ?? "rect") as typeof shape;
     if (next === shape) return;
     shape = next;
+    void ensureStandeeWindow();   // 切到立牌才知道压边有多宽
     if (source) resetCrop();
     els.shapeSwitch.querySelectorAll<HTMLButtonElement>("[data-shape]").forEach((b) => {
       b.setAttribute("aria-pressed", String(b.dataset.shape === shape));
