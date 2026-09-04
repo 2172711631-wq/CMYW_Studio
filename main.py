@@ -210,11 +210,19 @@ def art_score(flat: float) -> float:
 
 
 def dither_amount_for(flat: float) -> float:
-    """抖动幅度：按平坦度在照片档和插画档之间连续取值。
+    """抖动幅度：一整个量化步长，不再按画风缩水。
 
-    抖动是给照片打散层数台阶用的，落在平色插画上只会撒麻点、咬断细线。
+    以前这里按插画度往下压，理由是"抖动落在平色插画上只会撒麻点"。那个理由在
+    抖动块按喷嘴放大之后就不成立了 —— 麻点是亚喷嘴的抖动造成的，不是抖动本身。
+
+    而压小抖动有个更要命的后果：幅度不到一整步，分数层就表达不出来。肉色要 0.67 层，
+    幅度 0.22 时所有格子都落在 1 层，整片肉色深了一半。满幅才能让 67% 的格子给 1 层、
+    33% 给 0 层，平均回到 0.67。
+
+    保留这个函数是因为它仍是"策略"：以后要按画风调回来，改这里就够了。
     """
-    return float(LAYER_DITHER_AMT) * (1.0 - art_score(flat))
+    del flat
+    return 1.0
 
 
 def keep_floor_for(flat: float) -> float:
@@ -437,10 +445,17 @@ def _quantize_layers(
     x = need.astype(np.float32)
     if dither and amount > 0.0:
         x = x + _bayer_tile(x.shape[0], x.shape[1], dither_block) * amount
-    # 仅在 keep_mask（有色度）区域抬浅层，避免灰底/高光被三色薄雾铺满
+
+    # 抬浅层：把够不到 0.5 的浅色抬成一整层，免得整片消失。
+    #
+    # 但**满幅抖动时必须让开**。抖动幅度到一整个量化步长时，0.67 层的需求会有
+    # 67% 的格子落到 1 层、33% 落到 0 层，平均正好是 0.67 —— 这才是分数层唯一的
+    # 表达方式。这时候再抬一手，等于把每一格都按成 1 层，肉色就从 0.67 变成 1.00，
+    # 深了一半。抬层是抖动关掉时的兜底，不是和抖动并用的。
     floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor)
+    full_dither = dither and amount >= 1.0
     weight = need if neutral is None else (need - neutral)
-    lift = (weight >= floor) & (x < 0.5)
+    lift = (weight >= floor) & (x < 0.5) & (not full_dither)
     if keep_mask is not None:
         lift = lift & keep_mask.astype(bool)
     x = np.where(lift, 0.51, x)

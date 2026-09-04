@@ -137,6 +137,10 @@ function quantize(
   const out = new Int32Array(n);
   const floor32 = f(keepFloor);
   const lifted = f(0.51);
+  // 满幅抖动时抬层必须让开：幅度到一整个量化步长，0.67 层的需求会有 67% 的格子
+  // 落到 1 层、33% 落到 0 层，平均正好是 0.67 —— 这是分数层唯一的表达方式。
+  // 再抬一手就是把每格都按成 1 层，肉色从 0.67 变 1.00，深了一半。
+  const fullDither = dither && amount >= 1;
 
   for (let i = 0; i < n; i += 1) {
     let x = need[i];
@@ -154,7 +158,8 @@ function quantize(
     // 仅在有彩色度处把浅色抬过取整门槛，避免中性灰被三色薄雾铺满
     // 拿去和门槛比的量：默认是 need 本身，开了 liftChromaOnly 就先把中性底扣掉
     const weight = neutral === null ? need[i] : f(need[i] - neutral[i]);
-    const wantsLift = weight >= floor32 && x < 0.5 && (keepMask === null || keepMask[i] === 1);
+    const wantsLift =
+      !fullDither && weight >= floor32 && x < 0.5 && (keepMask === null || keepMask[i] === 1);
     if (wantsLift) x = lifted;
 
     const r = rintHalfToEven(x);

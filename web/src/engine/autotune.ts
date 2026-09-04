@@ -9,7 +9,7 @@
  * 和网站就会出两张不一样的画片，而这种分叉不会报错，只会让人某天发现颜色不对。
  */
 
-import { DEFAULT_MM_PER_PX, LAYER_DITHER_AMT, LAYER_KEEP_FLOOR, MESH_MERGE_FILTER } from "./constants";
+import { DEFAULT_MM_PER_PX, LAYER_KEEP_FLOOR, MESH_MERGE_FILTER } from "./constants";
 
 /** 量这张图有多"平"：相邻像素几乎没有差别的比例。
  *
@@ -41,10 +41,17 @@ export function artScore(flat: number): number {
   return Math.min(1, Math.max(0, (flat - 0.35) / 0.4));
 }
 
-/** 抖动幅度：按平坦度在照片档和插画档之间连续取值。
- *  抖动是给照片打散层数台阶用的，落在平色插画上只会撒麻点、咬断细线。 */
+/** 抖动幅度：一整个量化步长，不再按画风缩水。
+ *
+ * 以前这里按插画度往下压，理由是"抖动落在平色插画上只会撒麻点"。那个理由在抖动块
+ * 按喷嘴放大之后就不成立了 —— 麻点是亚喷嘴的抖动造成的，不是抖动本身。
+ *
+ * 而压小抖动有个更要命的后果：幅度不到一整步，分数层就表达不出来。肉色要 0.67 层，
+ * 幅度 0.22 时所有格子都落在 1 层，整片肉色深了一半。满幅才能让 67% 的格子给 1 层、
+ * 33% 给 0 层，平均回到 0.67。 */
 export function ditherAmountFor(flat: number): number {
-  return LAYER_DITHER_AMT * (1 - artScore(flat));
+  void flat;
+  return 1;
 }
 
 /** 浅色保留阈值：越"平"压得越低，最低压到默认值的两成。
