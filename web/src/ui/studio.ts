@@ -400,6 +400,48 @@ function maskRadiusMm(longestMm: number): number {
 }
 let reqId = 0;
 let previewToken = 0;
+
+/**
+ * 预览请求同时只准有一次在算，后来的只留最新的一次。
+ *
+ * 拖滑块时 input 每跳一格就发一次，从 0.80 拖到 4.00 是六十来次。worker 是单线程，
+ * 收到的每一条都会**整张算完**才看下一条 —— 于是队列越堆越长，画面几秒钟一动不动，
+ * 拖第二回时前一回还没排到。看上去就是"有时候变、有时候不变"，其实是全都在排队。
+ *
+ * 所以：在算的时候不再往 worker 里塞，只把最新的一次记在 previewQueued 上，
+ * 算完再发。中间那些被跳过的中途值本来也没人要看。
+ */
+let previewBusy = 0;
+let previewQueued: Extract<WorkerRequest, { type: "preview" }> | null = null;
+
+function sendPreview(msg: Extract<WorkerRequest, { type: "preview" }>): void {
+  if (previewBusy) {
+    previewQueued = msg;          // 顶掉上一条待发的，只保留最新
+    return;
+  }
+  previewBusy = msg.id;
+  worker.postMessage(msg, [msg.rgb.buffer]);
+}
+
+/** 一次算完（或出错）后调用：放行队列里最新的那次。 */
+function previewDone(): void {
+  previewBusy = 0;
+  const next = previewQueued;
+  previewQueued = null;
+  if (next) sendPreview(next);
+}
+
+/**
+ * 连续控件（滑块）用这个，不要直接 requestPreview。
+ *
+ * 排队问题在 sendPreview 那边已经解决了，这里还要防的是主线程：requestPreview
+ * 本身要把原图重采样到网格，一格一次也会把界面卡住，滑块自己都拖不动。
+ */
+let previewTimer = 0;
+function schedulePreview(): void {
+  window.clearTimeout(previewTimer);
+  previewTimer = window.setTimeout(requestPreview, 120);
+}
 let downloadUrl: string | null = null;
 
 /** 发出预览请求时记下当时的尺寸与外壳参数，结果回来时要用。 */
@@ -559,7 +601,7 @@ function requestPreview(): void {
   const id = ++reqId;
   previewToken = id;
   pending = { widthMm, heightMm, shell: shellSettings() };
-  const msg: WorkerRequest = {
+  const msg: Extract<WorkerRequest, { type: "preview" }> = {
     type: "preview",
     id,
     rgb,
@@ -577,7 +619,7 @@ function requestPreview(): void {
     minWhiteLayers: Number(els.whiteBase.value),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
-  worker.postMessage(msg, [rgb.buffer]);
+  sendPreview(msg);
 }
 
 function drawPreview(image: ImageData): void {
@@ -689,11 +731,14 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   const msg = event.data;
 
   if (msg.type === "progress") {
-    if (msg.id === reqId) setProgress(msg.percent, msg.stage);
+    // 认在算的那一次。只比 reqId 的话，一排队进度条就冻住了 ——
+    // 界面看着死了，实际上底下算得正欢。
+    if (msg.id === reqId || msg.id === previewBusy) setProgress(msg.percent, msg.stage);
     return;
   }
 
   if (msg.type === "preview") {
+    if (msg.id === previewBusy) previewDone();
     // 拖动滑块会连发请求，只认最后一次的结果
     if (msg.id !== previewToken) return;
     scene = { image: msg.image, thicknessMm: msg.thicknessMm };
@@ -726,6 +771,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   }
 
   if (msg.type === "error") {
+    if (msg.id === previewBusy) previewDone();   // 不放行的话，一次出错预览就再也不动了
     els.progress.hidden = true;
     els.exportBtn.disabled = false;
     showError(t(`出错了：${msg.message}`, `Something went wrong: ${msg.message}`));
@@ -733,6 +779,8 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
 };
 
 worker.onerror = (e) => {
+  previewBusy = 0;
+  previewQueued = null;
   els.progress.hidden = true;
   els.exportBtn.disabled = false;
   showError(t(`解算线程崩溃：${e.message}`, `The engine worker crashed: ${e.message}`));
@@ -850,12 +898,12 @@ async function ensureStandeeWindow(): Promise<void> {
 }
 els.density.addEventListener("change", requestPreview);
 els.whiteBase.addEventListener("input", () => {
-  els.whiteBaseOut.textContent = `${els.whiteBase.value} 层`;
-  requestPreview();
+  els.whiteBaseOut.textContent = `${els.whiteBase.value} 层`;   // 数字立刻跟手
+  schedulePreview();                                            // 画面等手停下
 });
 els.inkScale.addEventListener("input", () => {
   els.inkScaleOut.textContent = `${(Number(els.inkScale.value) / 100).toFixed(2)}×`;
-  requestPreview();
+  schedulePreview();
 });
 initCrop();
 els.shapeSwitch.querySelectorAll<HTMLButtonElement>("[data-shape]").forEach((btn) => {
