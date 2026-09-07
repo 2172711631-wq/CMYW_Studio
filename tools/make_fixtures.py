@@ -38,6 +38,7 @@ from main import (  # noqa: E402
     generate_cmyw_layers,
     dither_block_for,
     dither_screen_for,
+    MAX_WHITE_LAYERS,
     keep_floor_for,
     lift_chroma_only_for,
     merge_voxel_rectangles,
@@ -149,6 +150,7 @@ def main(argv: list[str]) -> int:
         "mm_per_px": 0.10,
         "dither_block": dither_block_for(0.10),
         "dither_screen": dither_screen_for(tuned_flat),
+        "white_max": MAX_WHITE_LAYERS,
     }
     tuned_rgb = np.clip(rgb.astype(np.float32) / 255.0, RGB_CLIP_MIN, 1.0)
     tw, ty, tm, tc = _layers_from_rgb_v3(
@@ -160,6 +162,7 @@ def main(argv: list[str]) -> int:
         lift_chroma_only=tuned["lift_chroma_only"],
         dither_block=tuned["dither_block"],
         dither_screen=tuned["dither_screen"],
+        white_max=tuned["white_max"],
     )
     # 线网那条路也钉住：它不是自动档在用的，但实现还在，
     # 而只要有第二条路，两个引擎就有分叉的余地。
@@ -172,6 +175,7 @@ def main(argv: list[str]) -> int:
         lift_chroma_only=tuned["lift_chroma_only"],
         dither_block=tuned["dither_block"],
         dither_screen="line",
+        white_max=tuned["white_max"],
     )
 
     auto = {

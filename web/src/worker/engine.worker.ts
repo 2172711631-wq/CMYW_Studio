@@ -6,7 +6,13 @@
  * 放进 Worker 后页面始终可交互，还能实时回报进度。
  */
 
-import { GRID_MAX, GRID_MIN, LAYER_HEIGHT, MESH_MERGE_FILTER } from "../engine/constants";
+import {
+  GRID_MAX,
+  GRID_MIN,
+  LAYER_HEIGHT,
+  MAX_WHITE_LAYERS,
+  MESH_MERGE_FILTER,
+} from "../engine/constants";
 import { applyKeepMask, roundedCornerKeepMask } from "../engine/corner";
 import { computeZStarts, maxStack, separateCMYW, type LayerSet } from "../engine/separate";
 import { SHELL_DEFAULTS, buildShellMesh, buildTopSolidModifier } from "../engine/shell";
@@ -108,6 +114,8 @@ function separationOptions(req: {
   ditherScreen?: "bayer" | "line";
 }) {
   return {
+    // 白层可变：白是最细的那把尺，专管中性档位。上限见 constants 的注释。
+    whiteMax: MAX_WHITE_LAYERS,
     dither: (req.ditherAmount ?? 1) > 0,
     ditherAmount: req.ditherAmount,
     keepFloor: req.keepFloor,

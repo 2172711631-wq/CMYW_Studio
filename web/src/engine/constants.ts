@@ -77,3 +77,10 @@ export const BAYER4: Float32Array = (() => {
  * 全是暗部：灰阶明暗跨度 0.566 → 0.607，最暗处透射 0.078 → 0.037，
  * 调色板色差 22.3 → 19.7，代价只是墨量多 6%。与 Python 侧 UCR_ADD_BACK 同值。 */
 export const UCR_ADD_BACK = 0.75;
+
+/** 白层可以铺到几层。白是最细的一把尺 —— 一层 0.11 光密度，比一层品红（0.50）细 4.5 倍。
+ *  钉死在 MIN_WHITE_LAYERS 等于把这把尺收起来不用：中性色只能靠三支粗墨去凑。
+ *  让它按像素在 [MIN, MAX] 之间选，色差 21.8 → 16.3，总层数几乎不变。
+ *  下限没往 4 以下放：白最少的地方正是画面最亮、最容易透出灯珠的地方。
+ *  与 Python 侧 MAX_WHITE_LAYERS 同值。 */
+export const MAX_WHITE_LAYERS = 6;

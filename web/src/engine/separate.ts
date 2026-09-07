@@ -37,6 +37,34 @@ import {
 
 const f = Math.fround;
 
+/** 逐像素挑白层数：哪个白让渲染结果最接近目标，就用哪个。
+ *
+ * 白对三个通道的贡献相等，调的是中性档位不是色相；色相仍由 CMY 的取整决定。
+ * 挑的时候用不带抖动/抬层的朴素取整 —— 白只影响中性档位，这个近似不会挑错。
+ * 与 Python 的 _choose_white 是同一套判据、同一个运算顺序。 */
+function pickWhite(
+  eR: number, eG: number, eB: number, lum: number, minW: number, maxW: number,
+): number {
+  if (maxW <= minW) return minW;
+  const eK = Math.min(eR, eG, eB);
+  const tR = Math.exp(-eR), tG = Math.exp(-eG), tB = Math.exp(-eB);
+  let bestW = minW;
+  let bestErr = Infinity;
+  for (let w = minW; w <= maxW; w += 1) {
+    const wc = f(DENSITY_W * w);
+    const kb = f(f(Math.max(0, f(eK - wc)) * f(1 - lum)) * UCR_ADD_BACK);
+    const c = Math.min(MAX_LAYERS_C, Math.max(0, Math.round(f(f(eR - eK) / DENSITY_C + f(kb / DENSITY_C)))));
+    const m = Math.min(MAX_LAYERS_M, Math.max(0, Math.round(f(f(eG - eK) / DENSITY_M + f(kb / DENSITY_M)))));
+    const y = Math.min(MAX_LAYERS_Y, Math.max(0, Math.round(f(f(eB - eK) / DENSITY_Y + f(kb / DENSITY_Y)))));
+    const dR = Math.exp(-(c * DENSITY_C + wc)) - tR;
+    const dG = Math.exp(-(m * DENSITY_M + wc)) - tG;
+    const dB = Math.exp(-(y * DENSITY_Y + wc)) - tB;
+    const err = dR * dR + dG * dG + dB * dB;
+    if (err < bestErr) { bestErr = err; bestW = w; }
+  }
+  return bestW;
+}
+
 /** 线网的级数。级数越多色调越准，但图案周期 = 级数 × 行距，太长就看得见条纹。
  *  与 Python 侧 LINE_SCREEN_LEVELS 同值。 */
 const LINE_SCREEN_LEVELS = 4;
@@ -115,6 +143,14 @@ export interface SeparateOptions {
    * v2 原样保留 —— 之前打过的片子要复现就选它。
    */
   profile?: "v2" | "v3";
+  /**
+   * 白层最多铺几层。不给就等于 minWhiteLayers（白钉死，也就是老行为）。
+   *
+   * 白对三个通道的贡献相等，所以它调的是**中性档位**、不是色相；而它的刻度比
+   * 彩色墨细 4.5 倍。色相仍由 CMY 的取整决定，白只负责把三通道共同的那部分残差
+   * 抹平 —— 中性灰因此不再需要靠三支粗墨去凑，也就不会凑出色偏。
+   */
+  whiteMax?: number;
   /** 白底层数，默认 4。 */
   minWhiteLayers?: number;
 }
@@ -215,14 +251,17 @@ export function separateCMYW(
   const ditherScreen = options.ditherScreen ?? "bayer";
   const profile = options.profile ?? "v3";
   const whiteLayers = options.minWhiteLayers ?? MIN_WHITE_LAYERS;
+  const whiteMax = Math.max(whiteLayers, options.whiteMax ?? whiteLayers);
 
-  // 白底在每个通道贡献的固定密度。Python 侧此处是 float64 运算。
-  const whiteCost = DENSITY_W * whiteLayers;
+  // 白底在每个通道贡献的密度。白层可变时它是逐像素的，见 pickWhite。
+  const whiteCostFixed = DENSITY_W * whiteLayers;
   const clipMin = f(RGB_CLIP_MIN);
 
   const needC = new Float32Array(count);
   const needM = new Float32Array(count);
   const needY = new Float32Array(count);
+  const W = new Int32Array(count);
+  W.fill(whiteLayers);
   const keepMask = new Uint8Array(count);
   // 不开时连数组都不分配 —— 默认行为一字未动。
   // v3 的中性底在三个通道上不等（各自除以自己的密度），所以要分三份。
@@ -258,6 +297,8 @@ export function separateCMYW(
 
     if (profile === "v2") {
       // 扣掉白底吸收，除以单层密度 → 需求层数。青吸红、品红吸绿、黄吸蓝。
+      // v2 的白是钉死的，不参与逐像素挑选。
+      const whiteCost = whiteCostFixed;
       let c = f(f(eR - whiteCost) / DENSITY_C);
       let m = f(f(eG - whiteCost) / DENSITY_M);
       let y = f(f(eB - whiteCost) / DENSITY_Y);
@@ -278,7 +319,11 @@ export function separateCMYW(
       needM[i] = f(mChr + kBack);
       needY[i] = f(yChr + kBack);
     } else {
-      // v3：中性成分在**光密度**上取，不在层数上取
+      // v3：中性成分在**光密度**上取，不在层数上取。
+      // 白层也在这儿逐像素定 —— 它是最细的那把尺，专管中性档位。
+      const wLayers = pickWhite(eR, eG, eB, lum, whiteLayers, whiteMax);
+      W[i] = wLayers;
+      const whiteCost = f(DENSITY_W * wLayers);
       const eK = Math.min(eR, eG, eB);
       cChr = f(f(eR - eK) / DENSITY_C);
       mChr = f(f(eG - eK) / DENSITY_M);
@@ -304,9 +349,6 @@ export function separateCMYW(
       neutralY![i] = nY;
     }
   }
-
-  const W = new Int32Array(count);
-  W.fill(whiteLayers);
 
   return {
     W,
