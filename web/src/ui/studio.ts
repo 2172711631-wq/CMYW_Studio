@@ -61,6 +61,8 @@ const els = {
   cropAngle: $<HTMLInputElement>("cropAngle"),
   cropAngleOut: $<HTMLOutputElement>("cropAngleOut"),
   density: $<HTMLSelectElement>("density"),
+  inkScale: $<HTMLInputElement>("inkScale"),
+  inkScaleOut: $<HTMLElement>("inkScaleOut"),
   styleOut: $<HTMLOutputElement>("styleOut"),
   densityOut: $<HTMLOutputElement>("densityOut"),
   swatches: $<HTMLDivElement>("swatches"),
@@ -569,6 +571,7 @@ function requestPreview(): void {
     ditherBlock: ditherBlockFor(mmPerPx()),
     ditherScreen: ditherScreenFor(lastFlatness),
     minInkArea: minInkAreaFor(mmPerPx()),
+    inkScale: Number(els.inkScale.value) / 100,
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
@@ -672,6 +675,7 @@ function startExport(): void {
     ditherBlock: ditherBlockFor(mmPerPx()),
     ditherScreen: ditherScreenFor(lastFlatness),
     minInkArea: minInkAreaFor(mmPerPx()),
+    inkScale: Number(els.inkScale.value) / 100,
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
@@ -841,6 +845,10 @@ async function ensureStandeeWindow(): Promise<void> {
   }
 }
 els.density.addEventListener("change", requestPreview);
+els.inkScale.addEventListener("input", () => {
+  els.inkScaleOut.textContent = `${(Number(els.inkScale.value) / 100).toFixed(2)}×`;
+  requestPreview();
+});
 initCrop();
 els.shapeSwitch.querySelectorAll<HTMLButtonElement>("[data-shape]").forEach((btn) => {
   btn.addEventListener("click", () => {

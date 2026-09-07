@@ -153,6 +153,8 @@ def main(argv: list[str]) -> int:
         # 生产里先停用了（见 main.MAX_WHITE_LAYERS），但代码还在，
         # 基准显式给 6 把这条路钉住 —— 没人测的分支迟早两边不一样
         "white_max": 6,
+        # 同理：生产默认 1.0，基准给个非 1 的值，浓度这条路才走得到
+        "ink_scale": 1.6,
         "min_ink_area": min_ink_area_for(0.10),
     }
     tuned_rgb = np.clip(rgb.astype(np.float32) / 255.0, RGB_CLIP_MIN, 1.0)
@@ -167,6 +169,7 @@ def main(argv: list[str]) -> int:
         dither_screen=tuned["dither_screen"],
         white_max=tuned["white_max"],
         min_ink_area=tuned["min_ink_area"],
+        ink_scale=tuned["ink_scale"],
     )
     # 线网那条路也钉住：它不是自动档在用的，但实现还在，
     # 而只要有第二条路，两个引擎就有分叉的余地。
@@ -180,6 +183,7 @@ def main(argv: list[str]) -> int:
         dither_block=tuned["dither_block"],
         dither_screen="line",
         white_max=tuned["white_max"],
+        ink_scale=tuned["ink_scale"],
     )
 
     auto = {

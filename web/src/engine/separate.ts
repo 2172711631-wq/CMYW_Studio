@@ -201,6 +201,13 @@ export interface SeparateOptions {
    * 1–2 格宽的笔画一起抹平。
    */
   minInkArea?: number;
+  /**
+   * 叠色浓度：整体乘在目标光密度上。1 = 原样。
+   *
+   * 做成参数而不是定死一个数，是因为"够不够浓"只能拿实物跟原图比 —— 所有能算的
+   * 指标都是拿模型跟模型自己比，换个参照系结论就反过来。定下来之后写死。
+   */
+  inkScale?: number;
   /** 白底层数，默认 4。 */
   minWhiteLayers?: number;
 }
@@ -303,6 +310,7 @@ export function separateCMYW(
   const whiteLayers = options.minWhiteLayers ?? MIN_WHITE_LAYERS;
   const whiteMax = Math.max(whiteLayers, options.whiteMax ?? whiteLayers);
   const minInkArea = Math.max(0, Math.round(options.minInkArea ?? 0));
+  const inkScale = options.inkScale ?? 1;
 
   // 白底在每个通道贡献的密度。白层可变时它是逐像素的，见 pickWhite。
   const whiteCostFixed = DENSITY_W * whiteLayers;
@@ -332,9 +340,9 @@ export function separateCMYW(
     b = b < clipMin ? clipMin : b > 1 ? 1 : b;
 
     // 目标光密度 e = (−ln T)^γ · α
-    const eR = f(f(Math.pow(f(-f(Math.log(r))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT);
-    const eG = f(f(Math.pow(f(-f(Math.log(g))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT);
-    const eB = f(f(Math.pow(f(-f(Math.log(b))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT);
+    const eR = f(f(f(Math.pow(f(-f(Math.log(r))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT) * inkScale);
+    const eG = f(f(f(Math.pow(f(-f(Math.log(g))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT) * inkScale);
+    const eB = f(f(f(Math.pow(f(-f(Math.log(b))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT) * inkScale);
 
     let lum = f(f(f(f(r + g) + b)) / 3);
     lum = lum < 0 ? 0 : lum > 1 ? 1 : lum;

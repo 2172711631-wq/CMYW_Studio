@@ -97,6 +97,16 @@ LAYER_HEIGHT = 0.08
 # 真正的解法多半在别处 —— Lab 查表选配方时，相近的颜色天然落到同一条配方上，
 # 白的选择本来就是空间连贯的，不会碎。所以这条等 ColorDB 那一版一起做。
 # 代码全留着，把这个数改回 6 就能重新打开。
+# 叠色浓度：整体乘在目标光密度上。1.0 = 现在。
+#
+# 为什么做成旋钮而不是我定一个数：判断"够不够浓"需要拿实物跟原图比，而我手上
+# 所有指标都是拿模型跟模型自己比 —— 换个参照系结论就反过来（同一批颜色，
+# 一种算法说"浅了 14 个 L*"，另一种说"误差 0.1"）。这不是能算出来的东西。
+#
+# 现在平均只用到 9.5 层，可用的有 22 层。往上调会同时加深、加饱和、加厚。
+# 定下来之后写死，旋钮就撤掉。
+INK_SCALE = float(os.environ.get("FDM_INK_SCALE", "1.0") or "1.0")
+
 MAX_WHITE_LAYERS = int(os.environ.get("FDM_MAX_WHITE_LAYERS", "4") or "4")
 
 MIN_WHITE_LAYERS = 4
@@ -425,6 +435,7 @@ def generate_cmyw_layers(
             "dither_block": dither_block_for(mm_per_px),
             "dither_screen": dither_screen_for(flat),
             "min_ink_area": min_ink_area_for(mm_per_px),
+            "ink_scale": INK_SCALE,
         }
         if auto_tune
         else None
@@ -458,6 +469,7 @@ def generate_cmyw_layers(
             "lift_chroma_only": bool(tune["lift_chroma_only"]) if tune else False,
             "dither_block": int(tune["dither_block"]) if tune else 1,
             "dither_screen": str(tune["dither_screen"]) if tune else "bayer",
+            "ink_scale": float(tune["ink_scale"]) if tune else 1.0,
         }
         # 白层可变、清杂点都只有 v3 有；v2 是存档档案，一字不动
         if profile != "v2":
@@ -568,6 +580,7 @@ def _layers_from_rgb_v2(
     lift_chroma_only: bool = False,
     dither_block: int = 1,
     dither_screen: str = "bayer",
+    ink_scale: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """从图片直接提取 C/M/Y 三色并堆叠（随图自适应，无偏色补偿旋钮）。
 
@@ -582,9 +595,9 @@ def _layers_from_rgb_v2(
     g = np.asarray(img_rgb[..., 1], dtype=np.float32)
     b = np.asarray(img_rgb[..., 2], dtype=np.float32)
 
-    e_r = (-np.log(r)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
-    e_g = (-np.log(g)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
-    e_b = (-np.log(b)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
+    e_r = (-np.log(r)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
+    e_g = (-np.log(g)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
+    e_b = (-np.log(b)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
 
     n_w = np.full(e_r.shape, int(min_white_layers), dtype=np.int32)
     white_cost = float(DENSITY_W) * float(min_white_layers)
@@ -706,6 +719,7 @@ def _layers_from_rgb_v3(
     lift_chroma_only: bool = False,
     dither_block: int = 1,
     dither_screen: str = "bayer",
+    ink_scale: float = 1.0,
     white_max: int | None = None,
     min_ink_area: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -737,9 +751,9 @@ def _layers_from_rgb_v3(
     g = np.asarray(img_rgb[..., 1], dtype=np.float32)
     b = np.asarray(img_rgb[..., 2], dtype=np.float32)
 
-    e_r = (-np.log(r)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
-    e_g = (-np.log(g)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
-    e_b = (-np.log(b)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
+    e_r = (-np.log(r)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
+    e_g = (-np.log(g)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
+    e_b = (-np.log(b)) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
 
     # 白层逐像素选：白是最细的那把尺，专管中性档位
     e_all = np.stack([e_r, e_g, e_b], axis=-1)

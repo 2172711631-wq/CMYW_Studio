@@ -88,6 +88,7 @@ describe("自动取值：与 Python 侧同一套判据", () => {
       ditherScreen: t.dither_screen as "bayer" | "line",
       whiteMax: t.white_max,
       minInkArea: t.min_ink_area,
+      inkScale: t.ink_scale,
     });
     // 这一组参数必须同时踩到三条默认路径走不到的分支，否则这个用例是空的
     expect(t.lift_chroma_only, "基准没走到 liftChromaOnly").toBe(true);
@@ -97,6 +98,7 @@ describe("自动取值：与 Python 侧同一套判据", () => {
     expect(t.white_max, "基准的白层上限没高过下限，白可变那条路一步也测不到")
       .toBeGreaterThan(4);
     expect(t.min_ink_area, "基准没开清杂点，这条路一步也测不到").toBeGreaterThan(1);
+    expect(t.ink_scale, "基准的浓度是 1，等于没测这条路").not.toBe(1);
     // 基准是 v3 出的；TS 这边默认也必须是 v3，否则这个逐像素比对是在比两套算法
     expect(auto.profile, "基准的分色档案变了，测试要跟着改").toBe("v3");
     expectSameLayers(layers, auto, "网点");
@@ -112,6 +114,7 @@ describe("自动取值：与 Python 侧同一套判据", () => {
       ditherBlock: t.dither_block,
       ditherScreen: "line",
       whiteMax: t.white_max,
+      inkScale: t.ink_scale,
     });
     expectSameLayers(
       layers,
