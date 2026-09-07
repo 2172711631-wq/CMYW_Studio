@@ -63,6 +63,8 @@ const els = {
   density: $<HTMLSelectElement>("density"),
   inkScale: $<HTMLInputElement>("inkScale"),
   inkScaleOut: $<HTMLElement>("inkScaleOut"),
+  whiteBase: $<HTMLInputElement>("whiteBase"),
+  whiteBaseOut: $<HTMLElement>("whiteBaseOut"),
   styleOut: $<HTMLOutputElement>("styleOut"),
   densityOut: $<HTMLOutputElement>("densityOut"),
   swatches: $<HTMLDivElement>("swatches"),
@@ -572,6 +574,7 @@ function requestPreview(): void {
     ditherScreen: ditherScreenFor(lastFlatness),
     minInkArea: minInkAreaFor(mmPerPx()),
     inkScale: Number(els.inkScale.value) / 100,
+    minWhiteLayers: Number(els.whiteBase.value),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
@@ -676,6 +679,7 @@ function startExport(): void {
     ditherScreen: ditherScreenFor(lastFlatness),
     minInkArea: minInkAreaFor(mmPerPx()),
     inkScale: Number(els.inkScale.value) / 100,
+    minWhiteLayers: Number(els.whiteBase.value),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
@@ -845,6 +849,10 @@ async function ensureStandeeWindow(): Promise<void> {
   }
 }
 els.density.addEventListener("change", requestPreview);
+els.whiteBase.addEventListener("input", () => {
+  els.whiteBaseOut.textContent = `${els.whiteBase.value} 层`;
+  requestPreview();
+});
 els.inkScale.addEventListener("input", () => {
   els.inkScaleOut.textContent = `${(Number(els.inkScale.value) / 100).toFixed(2)}×`;
   requestPreview();

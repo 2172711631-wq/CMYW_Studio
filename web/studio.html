@@ -123,10 +123,22 @@
           <span data-lang-zh>叠色浓度</span><span data-lang-en>Ink density</span>
           <output id="inkScaleOut" class="mono">1.00×</output>
         </div>
-        <input type="range" id="inkScale" min="80" max="250" step="5" value="100" />
+        <input type="range" id="inkScale" min="80" max="400" step="5" value="100" />
         <p class="hint">
-          <span data-lang-zh>整体加深、加饱和、加厚。现在平均只用到 22 层里的 9.5 层。够不够浓只有拿实物跟原图比才知道 —— 调到你觉得对的位置告诉我，我写死进去，这个滑块就撤掉。</span>
-          <span data-lang-en>Deepens, saturates and thickens together. Only 9.5 of the 22 available layers are used today. Whether that is enough can only be judged against a real print — find the value you like and it gets baked in and this slider goes away.</span>
+          <span data-lang-zh>1.0 时 343 种可打印配方只用到 113 种，画面被压扁；2.5 时全部用上。再往上颜色不会更多，只会把越来越多的颜色压到 6 层的天花板上（2.5 时 62%，4.0 时 86%），暗部层次反而丢。</span>
+          <span data-lang-en>At 1.0 only 113 of 343 printable recipes get used; at 2.5 all of them do. Beyond that adds no colours, it just pins more of them to the six-layer ceiling — 62% at 2.5, 86% at 4.0 — and flattens the dark end.</span>
+        </p>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <span data-lang-zh>白底层数</span><span data-lang-en>White base</span>
+          <output id="whiteBaseOut" class="mono">4 层</output>
+        </div>
+        <input type="range" id="whiteBase" min="2" max="6" step="1" value="4" />
+        <p class="hint">
+          <span data-lang-zh>白底自己就吸掉一截光，纯属损耗。减薄能同时变薄、变亮，颜色一种不少（浓度 2.5 下：4 层 1.05mm、亮度 0.227 → 2 层 0.91mm、亮度 0.269）。唯一的风险是薄了可能透出灯珠，只有点亮才知道。</span>
+          <span data-lang-en>The base absorbs light on its own — pure loss. Thinning it gets thinner and brighter at once with no colours lost (at density 2.5: 4 layers is 1.05mm at 0.227, 2 layers is 0.91mm at 0.269). The one risk is LEDs showing through, which only a lit print will tell you.</span>
         </p>
       </div>
 
