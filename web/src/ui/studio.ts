@@ -1019,3 +1019,16 @@ for (const b of els.viewSwitch.querySelectorAll<HTMLButtonElement>("button")) {
 
 syncSize();
 syncCorner();
+
+/* ---------------- 构建代号 ---------------- */
+
+/** 把 <meta name="build"> 的内容显示在页脚。
+ *
+ * 判断"线上是不是最新的"以前只能靠肉眼比画面，而很多改动本来就看不太出来 ——
+ * 结果是分不清"没生效"和"生效了但变化小"。有个代号就一目了然：
+ * 刷新后代号变了 = 新版本已经到你手上了。 */
+(() => {
+  const slot = document.getElementById("buildId");
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="build"]');
+  if (slot && meta?.content) slot.textContent = meta.content;
+})();
