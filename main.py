@@ -619,7 +619,15 @@ def _layers_from_rgb_v2(
     y = y_chr + k_back
 
     # 有彩色墨才抬浅层（阈值与 keep_floor 对齐，避免双旋钮漂移）
-    floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor)
+    # 门槛要跟着浓度一起放大。
+    # 
+    #     keep_floor 判的是"这个像素**本来**有没有颜色"，是对原图的判断；
+    #     而拿去比的色度已经被 ink_scale 乘过了。门槛不跟着乘，等于一调浓度
+    #     就把门槛偷偷降了同样的倍数 —— 2.7 倍下，只差 4/255 的"白"（JPEG 振铃、
+    #     抗锯齿溢出、本来就不是纯白的底）就被判成有颜色，1.0 倍下要差 14/255。
+    #     而且抬浅层是直接抬成整整一层，所以冒出来的不是一点点墨，是实打实的黄点。
+    #     乘上去之后，浓度只管印多厚，不再插手"这儿到底有没有颜色"。
+    floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor) * float(ink_scale)
     keep_mask = (c_chr + m_chr + y_chr) >= floor
     neutral = k_back if lift_chroma_only else None
 
@@ -627,7 +635,7 @@ def _layers_from_rgb_v2(
         "dither": dither,
         "keep_mask": keep_mask,
         "dither_amount": dither_amount,
-        "keep_floor": keep_floor,
+        "keep_floor": floor,   # 已按 ink_scale 缩放
         "neutral": neutral,
         "dither_block": dither_block,
         "dither_screen": dither_screen,
@@ -780,14 +788,22 @@ def _layers_from_rgb_v3(
     m = m_chr + k_back / float(DENSITY_M)
     y = y_chr + k_back / float(DENSITY_Y)
 
-    floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor)
+    # 门槛要跟着浓度一起放大。
+    # 
+    #     keep_floor 判的是"这个像素**本来**有没有颜色"，是对原图的判断；
+    #     而拿去比的色度已经被 ink_scale 乘过了。门槛不跟着乘，等于一调浓度
+    #     就把门槛偷偷降了同样的倍数 —— 2.7 倍下，只差 4/255 的"白"（JPEG 振铃、
+    #     抗锯齿溢出、本来就不是纯白的底）就被判成有颜色，1.0 倍下要差 14/255。
+    #     而且抬浅层是直接抬成整整一层，所以冒出来的不是一点点墨，是实打实的黄点。
+    #     乘上去之后，浓度只管印多厚，不再插手"这儿到底有没有颜色"。
+    floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor) * float(ink_scale)
     keep_mask = (c_chr + m_chr + y_chr) >= floor
     # 抬浅层的判据看色度本身，中性底不算数（和 v2 的 lift_chroma_only 同义）
     kw = {
         "dither": dither,
         "keep_mask": keep_mask,
         "dither_amount": dither_amount,
-        "keep_floor": keep_floor,
+        "keep_floor": floor,   # 已按 ink_scale 缩放
         "dither_block": dither_block,
         "dither_screen": dither_screen,
     }

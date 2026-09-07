@@ -302,7 +302,6 @@ export function separateCMYW(
 
   const dither = options.dither ?? true;
   const ditherAmount = options.ditherAmount ?? LAYER_DITHER_AMT;
-  const keepFloor = options.keepFloor ?? LAYER_KEEP_FLOOR;
   const liftChromaOnly = options.liftChromaOnly ?? false;
   const ditherBlock = Math.max(1, Math.round(options.ditherBlock ?? 1));
   const ditherScreen = options.ditherScreen ?? "bayer";
@@ -311,6 +310,15 @@ export function separateCMYW(
   const whiteMax = Math.max(whiteLayers, options.whiteMax ?? whiteLayers);
   const minInkArea = Math.max(0, Math.round(options.minInkArea ?? 0));
   const inkScale = options.inkScale ?? 1;
+  // 门槛要跟着浓度一起放大。
+  // 
+  //     keep_floor 判的是"这个像素**本来**有没有颜色"，是对原图的判断；
+  //     而拿去比的色度已经被 ink_scale 乘过了。门槛不跟着乘，等于一调浓度
+  //     就把门槛偷偷降了同样的倍数 —— 2.7 倍下，只差 4/255 的"白"（JPEG 振铃、
+  //     抗锯齿溢出、本来就不是纯白的底）就被判成有颜色，1.0 倍下要差 14/255。
+  //     而且抬浅层是直接抬成整整一层，所以冒出来的不是一点点墨，是实打实的黄点。
+  //     乘上去之后，浓度只管印多厚，不再插手"这儿到底有没有颜色"。
+  const keepFloor = f(f(options.keepFloor ?? LAYER_KEEP_FLOOR) * inkScale);
 
   // 白底在每个通道贡献的密度。白层可变时它是逐像素的，见 pickWhite。
   const whiteCostFixed = DENSITY_W * whiteLayers;
