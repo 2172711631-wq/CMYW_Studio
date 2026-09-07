@@ -69,6 +69,44 @@ function pickWhite(
  *  与 Python 侧 LINE_SCREEN_LEVELS 同值。 */
 const LINE_SCREEN_LEVELS = 4;
 
+/** 把面积小于 minArea 的连通团整块清零（8 邻接，只看有没有墨）。
+ *
+ * 连通域的划分与用什么算法无关，所以这里的洪水填充和 Python 侧的
+ * cv2.connectedComponents 会得到同一个划分，结果逐格一致。 */
+function dropSmallBlobs(layer: Int32Array, gridW: number, gridH: number, minArea: number): void {
+  if (minArea <= 1) return;
+  const n = layer.length;
+  const seen = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  const blob = new Int32Array(n);
+  for (let start = 0; start < n; start += 1) {
+    if (seen[start] || layer[start] === 0) continue;
+    let sp = 0;
+    let bp = 0;
+    stack[sp++] = start;
+    seen[start] = 1;
+    while (sp > 0) {
+      const cur = stack[--sp];
+      blob[bp++] = cur;
+      const y = (cur / gridW) | 0;
+      const x = cur - y * gridW;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= gridH) continue;
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= gridW) continue;
+          const j = ny * gridW + nx;
+          if (seen[j] || layer[j] === 0) continue;
+          seen[j] = 1;
+          stack[sp++] = j;
+        }
+      }
+    }
+    if (bp < minArea) for (let k = 0; k < bp; k += 1) layer[blob[k]] = 0;
+  }
+}
+
 export interface LayerSet {
   /** 白 / 黄 / 品红 / 青 的层数，行优先，长度 = gridW × gridH */
   W: Int32Array;
@@ -151,6 +189,18 @@ export interface SeparateOptions {
    * 抹平 —— 中性灰因此不再需要靠三支粗墨去凑，也就不会凑出色偏。
    */
   whiteMax?: number;
+  /**
+   * 比这还小的一团彩色墨就清掉，单位是格。0 = 不清（老行为）。
+   *
+   * 0.1mm/px 下一两格的杂点只有 0.1–0.2mm，比 0.4 的喷嘴还小，印不出来 ——
+   * 切片器只能拿缝隙填充去糊，结果就是边缘一圈杂色。这些点是抗锯齿边缘取整
+   * 取出来的，画里本来没有。
+   *
+   * 按**面积**清而不是按宽度：细线只有一格宽也比喷嘴细，但它连成一长条，
+   * 面积远大于阈值 —— 团被清掉、线留得住。中值滤波做不到这一点，它会把
+   * 1–2 格宽的笔画一起抹平。
+   */
+  minInkArea?: number;
   /** 白底层数，默认 4。 */
   minWhiteLayers?: number;
 }
@@ -252,6 +302,7 @@ export function separateCMYW(
   const profile = options.profile ?? "v3";
   const whiteLayers = options.minWhiteLayers ?? MIN_WHITE_LAYERS;
   const whiteMax = Math.max(whiteLayers, options.whiteMax ?? whiteLayers);
+  const minInkArea = Math.max(0, Math.round(options.minInkArea ?? 0));
 
   // 白底在每个通道贡献的密度。白层可变时它是逐像素的，见 pickWhite。
   const whiteCostFixed = DENSITY_W * whiteLayers;
@@ -350,11 +401,22 @@ export function separateCMYW(
     }
   }
 
+  const outC = quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor, neutralC, ditherBlock, ditherScreen);
+  const outM = quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor, neutralM, ditherBlock, ditherScreen);
+  const outY = quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor, neutralY, ditherBlock, ditherScreen);
+
+  // 清掉比喷嘴还小的彩色杂点。白不清 —— 它是底，清出洞来就漏光了。
+  if (minInkArea > 1 && profile !== "v2") {
+    dropSmallBlobs(outC, gridW, gridH, minInkArea);
+    dropSmallBlobs(outM, gridW, gridH, minInkArea);
+    dropSmallBlobs(outY, gridW, gridH, minInkArea);
+  }
+
   return {
     W,
-    C: quantize(needC, MAX_LAYERS_C, gridW, dither, ditherAmount, keepMask, keepFloor, neutralC, ditherBlock, ditherScreen),
-    M: quantize(needM, MAX_LAYERS_M, gridW, dither, ditherAmount, keepMask, keepFloor, neutralM, ditherBlock, ditherScreen),
-    Y: quantize(needY, MAX_LAYERS_Y, gridW, dither, ditherAmount, keepMask, keepFloor, neutralY, ditherBlock, ditherScreen),
+    C: outC,
+    M: outM,
+    Y: outY,
     gridW,
     gridH,
   };

@@ -412,6 +412,7 @@ def generate_cmyw_layers(
             "mm_per_px": mm_per_px_for(flat),
             "dither_block": dither_block_for(mm_per_px),
             "dither_screen": dither_screen_for(flat),
+            "min_ink_area": min_ink_area_for(mm_per_px),
         }
         if auto_tune
         else None
@@ -446,9 +447,10 @@ def generate_cmyw_layers(
             "dither_block": int(tune["dither_block"]) if tune else 1,
             "dither_screen": str(tune["dither_screen"]) if tune else "bayer",
         }
-        # 白层可变只有 v3 有；v2 是存档档案，白钉死不动
+        # 白层可变、清杂点都只有 v3 有；v2 是存档档案，一字不动
         if profile != "v2":
             kwargs["white_max"] = MAX_WHITE_LAYERS
+            kwargs["min_ink_area"] = int(tune["min_ink_area"]) if tune else 0
         n_w, n_y, n_m, n_c = builder(img_rgb, min_white_layers, **kwargs)
 
     result = {"C": n_c, "M": n_m, "Y": n_y, "W": n_w, "shape": img_bgr.shape}
@@ -612,6 +614,42 @@ def _layers_from_rgb_v2(
 
 
 
+def min_ink_area_for(mm_per_px: float | None) -> int:
+    """比这还小的一团彩色墨就清掉，单位是格。
+
+    0.1mm/px 下一个一两格的黄点只有 0.1–0.2mm，比 0.4 的喷嘴还小 —— 印不出来，
+    切片器只能拿缝隙填充去糊，结果就是边上一圈杂色。这些点是抗锯齿边缘取整取
+    出来的，不是画里本来有的东西。
+
+    阈值取半个喷嘴的面积。为什么不是一整个：细线只有一格宽，也比喷嘴细，但它是
+    连成一长条的，面积远大于阈值 —— 按**面积**清，团被清掉、线留得住，这正是
+    中值滤波做不到的（中值会把 1–2 格宽的笔画一起抹平）。
+    """
+    if not mm_per_px or mm_per_px <= 0:
+        return 0
+    return max(2, int(round((NOZZLE_MM / float(mm_per_px)) ** 2 / 2.0)))
+
+
+def _drop_small_blobs(layer: np.ndarray, min_area: int) -> np.ndarray:
+    """把面积小于 min_area 的连通团整块清零（8 邻接，只看有没有墨）。
+
+    只看二值的"有没有墨"，不按层数分级 —— 分级会去动层数边界，
+    而我们要处理的是"整团都不该存在"的杂点。
+    """
+    if min_area <= 1:
+        return layer
+    mask = (layer > 0).astype(np.uint8)
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+    if n <= 1:
+        return layer
+    small = np.nonzero(stats[1:, cv2.CC_STAT_AREA] < min_area)[0] + 1
+    if len(small) == 0:
+        return layer
+    out = layer.copy()
+    out[np.isin(lab, small)] = 0
+    return out
+
+
 def _choose_white(
     e: np.ndarray, lum: np.ndarray, min_w: int, max_w: int
 ) -> np.ndarray:
@@ -657,6 +695,7 @@ def _layers_from_rgb_v3(
     dither_block: int = 1,
     dither_screen: str = "bayer",
     white_max: int | None = None,
+    min_ink_area: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """v3：和 v2 同一个光学模型，只改了两处顺序，浅色和中性色就正常了。
 
@@ -735,6 +774,12 @@ def _layers_from_rgb_v3(
     n_y = _quantize_layers(
         y, MAX_LAYERS_Y, neutral=(k_back / float(DENSITY_Y)) if lift_chroma_only else None, **kw
     )
+
+    # 清掉比喷嘴还小的彩色杂点。白不清 —— 它是底，清出洞来就漏光了。
+    if min_ink_area > 1:
+        n_c = _drop_small_blobs(n_c, min_ink_area)
+        n_m = _drop_small_blobs(n_m, min_ink_area)
+        n_y = _drop_small_blobs(n_y, min_ink_area)
     return n_w, n_y, n_m, n_c
 
 

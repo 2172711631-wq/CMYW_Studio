@@ -113,6 +113,16 @@ export function ditherScreenFor(flat: number): "bayer" | "line" {
   return "bayer";
 }
 
+/** 比这还小的一团彩色墨就清掉，单位是格。
+ *
+ * 阈值取半个喷嘴的面积：一两格的杂点比喷嘴还小，印不出来，切片器只能拿缝隙填充
+ * 去糊，就成了边缘一圈杂色。按面积清而不是按宽度 —— 细线一格宽但连成长条，
+ * 面积远大于阈值，团被清掉、线留得住。 */
+export function minInkAreaFor(mmPerPx: number): number {
+  if (!(mmPerPx > 0)) return 0;
+  return Math.max(2, Math.round((NOZZLE_MM / mmPerPx) ** 2 / 2));
+}
+
 /** 网格密度 mm/px：插画靠细线吃饭，格子给密一点。
  *
  * 照片是连续调，标准密度就够，再密只是把三角形和文件撑大。

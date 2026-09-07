@@ -12,6 +12,7 @@ import {
   ditherAmountFor,
   ditherBlockFor,
   ditherScreenFor,
+  minInkAreaFor,
   flatnessOf,
   keepFloorFor,
   liftChromaOnlyFor,
@@ -567,6 +568,7 @@ function requestPreview(): void {
     liftChromaOnly: liftChromaOnlyFor(lastFlatness),
     ditherBlock: ditherBlockFor(mmPerPx()),
     ditherScreen: ditherScreenFor(lastFlatness),
+    minInkArea: minInkAreaFor(mmPerPx()),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
@@ -669,6 +671,7 @@ function startExport(): void {
     liftChromaOnly: liftChromaOnlyFor(lastFlatness),
     ditherBlock: ditherBlockFor(mmPerPx()),
     ditherScreen: ditherScreenFor(lastFlatness),
+    minInkArea: minInkAreaFor(mmPerPx()),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);
