@@ -119,7 +119,20 @@ LINEAR_COEFFICIENT = 1.78
 RGB_CLIP_MIN = 0.004
 
 # v1=旧通道直映；v2=从图片提取 CMY 三色堆叠（Beer–Lambert + 自适应 UCR）
-COLOR_PROFILE = (os.environ.get("FDM_COLOR_PROFILE") or "v3").strip().lower()
+# 默认回到 v1 —— 最早那版"图上是什么色就分什么色"。
+#
+# v2 加了 UCR，v3 把 UCR 挪进光密度空间又加了抬浅层，路是越走越复杂，
+# 但拿同一张插画量下来（867×1350，白 4 层，不抖动）：
+#
+#     v1   平均色差 7.10   最差 5% 的 25.5   总层数 2.51M
+#     v3   平均色差 8.15   最差 5% 的 38.5   总层数 1.99M
+#
+# v3 更省墨，可是错得更狠：深蓝头发被推成青绿（77,155,240 → 原色 124,162,211
+# 是对的，可暗部的 C3M2Y1 出来是 41,92,118），浅肉色被抬成 245,152,129 的橘。
+# v1 在这两处都只是"少了点颜色"，不会变成别的颜色 —— 少色比错色好看。
+#
+# v2 / v3 都还在，--profile 能切，也都还有逐像素对拍。
+COLOR_PROFILE = (os.environ.get("FDM_COLOR_PROFILE") or "v1").strip().lower()
 
 # v3：抽掉的中性成分往回加多少。
 #
@@ -482,11 +495,13 @@ def generate_cmyw_layers(
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
     img_rgb = np.clip(img_rgb, RGB_CLIP_MIN, 1.0)
 
-    profile = (color_profile or COLOR_PROFILE or "v3").strip().lower()
+    profile = (color_profile or COLOR_PROFILE or "v1").strip().lower()
     use_dither = profile != "v1" if dither is None else bool(dither)
     if profile == "v1":
+        # v1 只认这两个旋钮：白底多厚、墨加多浓。抖动、抬浅层、清杂点都不属于它。
         n_w, n_y, n_m, n_c = _layers_from_rgb_v1(
-            img_rgb, min_white_layers, dither=use_dither
+            img_rgb, min_white_layers, dither=use_dither,
+            ink_scale=float(tune["ink_scale"]) if tune else 1.0,
         )
     else:
         builder = _layers_from_rgb_v2 if profile == "v2" else _layers_from_rgb_v3
@@ -586,10 +601,21 @@ def _layers_from_rgb_v1(
     min_white_layers: int,
     *,
     dither: bool,
+    ink_scale: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    e_r = (-np.log(img_rgb[..., 0])) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
-    e_g = (-np.log(img_rgb[..., 1])) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
-    e_b = (-np.log(img_rgb[..., 2])) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT
+    """最早那版：图上是什么色，就照着分什么色。
+
+    每个通道各算各的光密度，扣掉白底自己吸掉的那份，除以该色单层的密度，
+    四舍五入。没有 UCR，没有抬浅层，没有清杂点 —— 一条直路。
+
+    它的短处是真的：白底吸收 0.44，任何通道亮过 221/255 就一层墨都拿不到，
+    浅肉色、淡粉会整片变白。v2 和 v3 就是为了修这个才长出来的。
+    但修的过程中把别的地方弄坏了：v3 会把深蓝推成青绿、把浅肉色抬成橘。
+    **少了颜色，比多出一个错的颜色好看** —— 所以默认退回这里。
+    """
+    e_r = (-np.log(img_rgb[..., 0])) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
+    e_g = (-np.log(img_rgb[..., 1])) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
+    e_b = (-np.log(img_rgb[..., 2])) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
     n_w = np.full(e_r.shape, min_white_layers, dtype=np.int32)
     white_cost = DENSITY_W * n_w
     n_c = _quantize_layers((e_r - white_cost) / DENSITY_C, MAX_LAYERS_C, dither=dither)

@@ -87,6 +87,9 @@ describe("自动取值：与 Python 侧同一套判据", () => {
       ditherBlock: t.dither_block,
       ditherScreen: t.dither_screen as "bayer" | "line",
       whiteMax: t.white_max,
+      // 这份基准钉的是 v3，就明写出来 —— 之前靠"默认档正好是 v3"隐式成立，
+      // 默认一退回 v1 就整片对不上（W 全是 4，基准里是 6）。
+      profile: "v3",
       minInkArea: t.min_ink_area,
       inkScale: t.ink_scale,
     });
@@ -114,6 +117,9 @@ describe("自动取值：与 Python 侧同一套判据", () => {
       ditherBlock: t.dither_block,
       ditherScreen: "line",
       whiteMax: t.white_max,
+      // 这份基准钉的是 v3，就明写出来 —— 之前靠"默认档正好是 v3"隐式成立，
+      // 默认一退回 v1 就整片对不上（W 全是 4，基准里是 6）。
+      profile: "v3",
       inkScale: t.ink_scale,
     });
     expectSameLayers(

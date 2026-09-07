@@ -181,7 +181,7 @@ export interface SeparateOptions {
    *
    * v2 原样保留 —— 之前打过的片子要复现就选它。
    */
-  profile?: "v2" | "v3";
+  profile?: "v1" | "v2" | "v3";
   /**
    * 白层最多铺几层。不给就等于 minWhiteLayers（白钉死，也就是老行为）。
    *
@@ -284,6 +284,69 @@ function quantize(
 }
 
 /**
+ * v1：最早那版，图上是什么色就照着分什么色。
+ *
+ * 每个通道各算各的光密度，扣掉白底自己吸掉的那份，除以该色单层的密度，
+ * 四舍五入。没有 UCR，没有抬浅层，没有清杂点 —— 一条直路。
+ *
+ * 它的短处是真的：白底吸收 0.44，任何通道亮过 221/255 就一层墨都拿不到，
+ * 浅肉色、淡粉会整片变白。v2 和 v3 就是为了修这个才长出来的，但修的过程中
+ * 把别的地方弄坏了 —— 同一张插画上 v3 会把深蓝头发推成青绿、把浅肉色抬成橘，
+ * 平均色差反而从 7.10 涨到 8.15，最差 5% 从 25.5 涨到 38.5。
+ * **少了颜色，比多出一个错的颜色好看**，所以默认退回这里。
+ *
+ * 与 Python 侧 _layers_from_rgb_v1 逐像素一致。
+ */
+function separateV1(
+  rgb: Uint8Array | Uint8ClampedArray,
+  gridW: number,
+  gridH: number,
+  whiteLayers: number,
+  inkScale: number,
+  dither: boolean,
+  ditherAmount: number,
+): LayerSet {
+  const count = gridW * gridH;
+  const clipMin = f(RGB_CLIP_MIN);
+  const whiteCost = f(DENSITY_W * whiteLayers);
+  const W = new Int32Array(count);
+  W.fill(whiteLayers);
+  const needC = new Float32Array(count);
+  const needM = new Float32Array(count);
+  const needY = new Float32Array(count);
+
+  for (let i = 0; i < count; i += 1) {
+    const p = i * 3;
+    let r = f(rgb[p] / 255);
+    let g = f(rgb[p + 1] / 255);
+    let b = f(rgb[p + 2] / 255);
+    r = r < clipMin ? clipMin : r > 1 ? 1 : r;
+    g = g < clipMin ? clipMin : g > 1 ? 1 : g;
+    b = b < clipMin ? clipMin : b > 1 ? 1 : b;
+    const eR = f(f(f(Math.pow(f(-f(Math.log(r))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT) * inkScale);
+    const eG = f(f(f(Math.pow(f(-f(Math.log(g))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT) * inkScale);
+    const eB = f(f(f(Math.pow(f(-f(Math.log(b))), GAMMA_EXPONENT)) * LINEAR_COEFFICIENT) * inkScale);
+    needC[i] = f(f(eR - whiteCost) / DENSITY_C);
+    needM[i] = f(f(eG - whiteCost) / DENSITY_M);
+    needY[i] = f(f(eB - whiteCost) / DENSITY_Y);
+  }
+
+  // v1 也抬浅层（Python 侧 _quantize_layers 的默认行为就是抬），门槛用模块常数。
+  // keepMask 传 null = 不额外设关卡，neutral 传 null = 门槛就看需求本身。
+  // 这两处必须跟 Python 一模一样，否则桌面端和网页端会出两张不同的画片。
+  const q = (need: Float32Array, max: number) =>
+    quantize(need, max, gridW, dither, ditherAmount, null, LAYER_KEEP_FLOOR, null, 1, "bayer");
+  return {
+    W,
+    C: q(needC, MAX_LAYERS_C),
+    M: q(needM, MAX_LAYERS_M),
+    Y: q(needY, MAX_LAYERS_Y),
+    gridW,
+    gridH,
+  };
+}
+
+/**
  * 把已重采样到打印网格的 RGB 像素分解成四色层数。
  *
  * @param rgb   RGBRGB… 排列的 uint8，长度必须是 gridW × gridH × 3
@@ -306,7 +369,7 @@ export function separateCMYW(
   const liftChromaOnly = options.liftChromaOnly ?? false;
   const ditherBlock = Math.max(1, Math.round(options.ditherBlock ?? 1));
   const ditherScreen = options.ditherScreen ?? "bayer";
-  const profile = options.profile ?? "v3";
+  const profile = options.profile ?? "v1";
   const whiteLayers = options.minWhiteLayers ?? MIN_WHITE_LAYERS;
   const whiteMax = Math.max(whiteLayers, options.whiteMax ?? whiteLayers);
   const minInkArea = Math.max(0, Math.round(options.minInkArea ?? 0));
@@ -324,6 +387,10 @@ export function separateCMYW(
   // 白底在每个通道贡献的密度。白层可变时它是逐像素的，见 pickWhite。
   const whiteCostFixed = DENSITY_W * whiteLayers;
   const clipMin = f(RGB_CLIP_MIN);
+
+  if (profile === "v1") {
+    return separateV1(rgb, gridW, gridH, whiteLayers, inkScale, dither, ditherAmount);
+  }
 
   const needC = new Float32Array(count);
   const needM = new Float32Array(count);

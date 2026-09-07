@@ -121,12 +121,12 @@
       <div class="field">
         <div class="field-head">
           <span data-lang-zh>叠色浓度</span><span data-lang-en>Ink density</span>
-          <output id="inkScaleOut" class="mono">2.45×</output>
+          <output id="inkScaleOut" class="mono">1.00×</output>
         </div>
-        <input type="range" id="inkScale" min="80" max="400" step="5" value="245" />
+        <input type="range" id="inkScale" min="80" max="400" step="5" value="100" />
         <p class="hint">
-          <span data-lang-zh>1.0 时 343 种可打印配方只用到 113 种，画面被压扁；2.5 时全部用上。再往上颜色不会更多，只会把越来越多的颜色压到 6 层的天花板上（2.5 时 62%，4.0 时 86%），暗部层次反而丢。</span>
-          <span data-lang-en>At 1.0 only 113 of 343 printable recipes get used; at 2.5 all of them do. Beyond that adds no colours, it just pins more of them to the six-layer ceiling — 62% at 2.5, 86% at 4.0 — and flattens the dark end.</span>
+          <span data-lang-zh>1.0 就是照着原图的颜色直接分色，不加不减。往上拉会把每一格的墨都加厚，画面更浓也更深 —— 但它是**整体**放大，浅色和边缘的过渡格被推得最狠，容易糊成一片或者变成别的颜色。要还原原图就留在 1.0。</span>
+          <span data-lang-en>At 1.0 the ink follows the picture's own colours, nothing added. Higher thickens every cell — deeper and denser, but it scales everything, and the pale tones and edge pixels move furthest, which is where colours turn into other colours. Leave it at 1.0 for a faithful print.</span>
         </p>
       </div>
 

@@ -233,8 +233,28 @@ def main(argv: list[str]) -> int:
         ],
     }
 
+    # --- v1 基准 ---
+    # v1 现在是默认档，两边引擎各写了一份实现，没有对拍就一定会分叉。
+    # 它是最简单的一条路，也正因为简单最容易被"顺手优化"改掉。
+    v1_layers = generate_cmyw_layers(
+        str(source), target_grid_w=GRID_W, target_grid_h=GRID_H,
+        dither=False, color_profile="v1", auto_tune=False,
+    )
+    if not v1_layers:
+        print("v1 分色失败 / v1 separation failed", file=sys.stderr)
+        return 3
+    v1 = {
+        "grid_w": GRID_W, "grid_h": GRID_H, "profile": "v1", "dither": False,
+        "rgb": rgb.reshape(-1).tolist(),
+        "W": v1_layers["W"].reshape(-1).tolist(),
+        "Y": v1_layers["Y"].reshape(-1).tolist(),
+        "M": v1_layers["M"].reshape(-1).tolist(),
+        "C": v1_layers["C"].reshape(-1).tolist(),
+    }
+
     for name, payload in (
         ("separation-reference.json", separation),
+        ("separation-v1-reference.json", v1),
         ("separation-auto-reference.json", auto),
         ("mesh-reference.json", mesh),
     ):
