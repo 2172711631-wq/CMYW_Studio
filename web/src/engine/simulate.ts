@@ -10,7 +10,13 @@
  * 比打废一版再回来调要好得多。
  */
 
-import { DENSITY_C, DENSITY_M, DENSITY_W, DENSITY_Y } from "./constants";
+import {
+  DENSITY_C,
+  DENSITY_M,
+  DENSITY_W,
+  DENSITY_Y,
+  MIN_WHITE_LAYERS,
+} from "./constants";
 import type { LayerSet } from "./separate";
 
 /** 相邻通道的轻微串扰，经验值，不加会显得过于干净不像实物。 */
@@ -30,7 +36,16 @@ export interface SimulateOptions {
  * @returns RGBA 数据，可直接 putImageData
  */
 export function simulateLit(layers: LayerSet, options: SimulateOptions = {}): ImageData {
-  const { brightness = 1.6, enhance = true } = options;
+  // 增益不再是拍脑袋的 1.6，而是"让光秃白底正好等于纯白"。
+  //
+  // 1.6 会把白底顶到 1.03 —— 最亮的那个通道被削平成纯白，别的通道不削。
+  // 削掉一个通道就是凭空拉高饱和度：肉色的红通道正好顶在这个位置，
+  // 于是预览里的肉色比实物浓。照着偏艳的预览判断"够了"，打出来就是"薄了"。
+  //
+  // 白底是这张画能达到的最亮，让它正好落在纯白，其余一律落在纯白以下，
+  // 全程不钳位，就没有这种凭空的饱和度。
+  const baseWhite = Math.exp(-DENSITY_W * MIN_WHITE_LAYERS);
+  const { brightness = 1 / baseWhite, enhance = false } = options;
   const { W, Y, M, C, gridW, gridH } = layers;
   const n = gridW * gridH;
 
@@ -70,10 +85,11 @@ export function simulateLit(layers: LayerSet, options: SimulateOptions = {}): Im
 }
 
 /**
- * 轻微散射 + 高光溢出 + 暗角。
+ * 轻微散射 + 高光溢出 + 暗角 —— **默认不开**。
  *
- * 实物是有厚度的塑料，光在里面会散开一点，边缘也比中心暗。
- * 幅度刻意压得很小 —— 加太多就变成滤镜，把脸吹爆。
+ * 这三样都是装饰：高光溢出 +35%、暗角 −14%、散射 12%。实物确实有这些现象，
+ * 但预览的用处是"照着它判断颜色对不对"，而这些效果会让画面比数据更讨喜 ——
+ * 判断浓淡的时候，讨喜就是误导。要出宣传图再显式打开。
  */
 function applyGlow(rgb: Float32Array, w: number, h: number): void {
   const soft = boxBlur(rgb, w, h, Math.max(1, Math.round(Math.min(w, h) * 0.004)));
