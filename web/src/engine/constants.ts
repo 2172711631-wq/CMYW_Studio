@@ -13,10 +13,26 @@ export const LAYER_HEIGHT = 0.08;
 export const MIN_WHITE_LAYERS = 4;
 
 /** 每层 0.08mm 贡献的光密度，拓竹 PLA Basic 上的工作值（非仪器实测）。 */
+// 单层光密度：**量出来的，不是猜的**（2026-09-07，全色域色卡背光实测）。
+//
+// 之前这三个数是估的，而且估错得很厉害 —— 尤其是黄：
+//
+//     假设   实测   一层黄之后蓝光还剩
+//     0.68   2.51   模型以为 0.507，实际 0.081
+//
+// 差了六倍。浅肉色需要的是一丝丝黄，给下去的却是一记闷棍 ——
+// "肉色太深""整体发深""接近橘红"全都出在这儿，跟分色算法无关。
+//
+// 拟合方法：只用还没饱和的那几级（透射率 > 0.03）做 ln T = -D·n 的最小二乘。
+// 更暗的几级已经贴着相机噪声底，比值不可信。
+// 实测的饱和点：黄 2 层、青 5 层、品红 6 层 —— 再往上加是同一个黑。
+//
+// 白的 0.11 还是估的：它是这次测量的参照白本身，量不出来。
+// 重新标定：py -3.11 tools/measure_colorchart.py 照片.jpg
 export const DENSITY_W = 0.11;
-export const DENSITY_C = 0.58;
-export const DENSITY_M = 0.5;
-export const DENSITY_Y = 0.68;
+export const DENSITY_C = 0.92;
+export const DENSITY_M = 0.68;
+export const DENSITY_Y = 2.51;
 
 /** 各色最大层数。超过这个厚度收益递减且换料成本剧增。 */
 export const MAX_LAYERS_C = 6;

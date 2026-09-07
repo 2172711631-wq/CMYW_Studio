@@ -111,7 +111,23 @@ MAX_WHITE_LAYERS = int(os.environ.get("FDM_MAX_WHITE_LAYERS", "4") or "4")
 
 MIN_WHITE_LAYERS = 4
 
-DENSITY_W, DENSITY_C, DENSITY_M, DENSITY_Y = 0.11, 0.58, 0.50, 0.68
+# 单层光密度：**量出来的，不是猜的**（2026-09-07，全色域色卡背光实测）。
+#
+# 之前这三个数是估的，而且估错得很厉害 —— 尤其是黄：
+#
+#     假设   实测   一层黄之后蓝光还剩
+#     0.68   2.51   模型以为 0.507，实际 0.081
+#
+# 差了六倍。浅肉色需要的是一丝丝黄，给下去的却是一记闷棍 ——
+# "肉色太深""整体发深""接近橘红"全都出在这儿，跟分色算法无关。
+#
+# 拟合方法：只用还没饱和的那几级（透射率 > 0.03）做 ln T = -D·n 的最小二乘。
+# 更暗的几级已经贴着相机噪声底，比值不可信。
+# 实测的饱和点：黄 2 层、青 5 层、品红 6 层 —— 再往上加是同一个黑。
+#
+# 白的 0.11 还是估的：它是这次测量的参照白本身，量不出来。
+# 重新标定：py -3.11 tools/measure_colorchart.py 照片.jpg
+DENSITY_W, DENSITY_C, DENSITY_M, DENSITY_Y = 0.11, 0.92, 0.68, 2.51
 MAX_LAYERS_C, MAX_LAYERS_M, MAX_LAYERS_Y = 6, 6, 6
 
 GAMMA_EXPONENT = 0.72
