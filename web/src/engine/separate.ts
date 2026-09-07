@@ -26,6 +26,7 @@ import {
   GAMMA_EXPONENT,
   LAYER_DITHER_AMT,
   LAYER_KEEP_FLOOR,
+  LIFT_MIN_CHROMA,
   LINEAR_COEFFICIENT,
   MAX_LAYERS_C,
   MAX_LAYERS_M,
@@ -408,8 +409,12 @@ export function separateCMYW(
       needY[i] = f(yChr + nY);
     }
 
-    // 只有真正带彩色度的像素才允许抬浅层
-    keepMask[i] = f(f(cChr + mChr) + yChr) >= f(keepFloor) ? 1 : 0;
+    // 只有真正带彩色度的像素才允许抬浅层。第二关看**原图**的色度，
+    // 不看换算出来的层数 —— 见 LIFT_MIN_CHROMA。
+    // v2 是存档档案，一字不动 —— 这一关只加在 v3 上。
+    const srcChroma = profile === "v2" ? 1 : f(Math.max(r, g, b) - Math.min(r, g, b));
+    keepMask[i] =
+      f(f(cChr + mChr) + yChr) >= f(keepFloor) && srcChroma >= f(LIFT_MIN_CHROMA) ? 1 : 0;
     if (neutralC !== null) {
       neutralC[i] = nC;
       neutralM![i] = nM;

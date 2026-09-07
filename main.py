@@ -148,6 +148,18 @@ except ValueError:
 LAYER_DITHER_AMT = float(os.environ.get("FDM_DITHER_AMT", "0.22") or "0.22")
 # 有色度时才抬浅层；过低会把灰底也打成三色薄雾
 LAYER_KEEP_FLOOR = float(os.environ.get("FDM_KEEP_FLOOR", "0.32") or "0.32")
+
+# 抬浅层之前，先要求原图这一格**真的有颜色**：三通道极差（0..1）。
+#
+# 抬浅层是"需求不足半层也给它一整层"，本意是别让浅色整片消失。但门槛记在
+# 层数上，换算回原图只要 11/255 的偏色就够 —— 那个程度屏幕上根本看不见，
+# 却会拿到**整整一层品红**。实测这张插画：围裙、袜子、脚下影子里 2380 格
+# 就是这么变粉的，原色清一色是 254,243,247 这种。
+#
+# 这张图的直方图把两拨东西分得很干净：偏色 5–15/255 有 5.8 万格（围裙、
+# JPEG 噪声、抗锯齿），25–40/255 有 2.05 万格（皮肤，中位 254,231,221），
+# 中间 15–25 只有 1895 格。18/255 正落在这条缝里：噪声挡住，皮肤放行。
+LIFT_MIN_CHROMA = 18.0 / 255.0
 # 网格前轻度中值：3 即可合并，过大易把薄雾抹成大色块
 MESH_MERGE_FILTER = int(os.environ.get("FDM_MESH_MERGE_FILTER", "3") or "3")
 
@@ -814,6 +826,8 @@ def _layers_from_rgb_v3(
     #     乘上去之后，浓度只管印多厚，不再插手"这儿到底有没有颜色"。
     floor = float(LAYER_KEEP_FLOOR if keep_floor is None else keep_floor) * float(ink_scale)
     keep_mask = (c_chr + m_chr + y_chr) >= floor
+    # 抬浅层还要过原图色度这一关，见 LIFT_MIN_CHROMA
+    keep_mask &= (np.maximum(np.maximum(r, g), b) - np.minimum(np.minimum(r, g), b)) >= LIFT_MIN_CHROMA
     # 抬浅层的判据看色度本身，中性底不算数（和 v2 的 lift_chroma_only 同义）
     kw = {
         "dither": dither,
