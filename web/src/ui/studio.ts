@@ -479,7 +479,49 @@ function gridFor(bitmap: ImageBitmap, longestMm: number, fixed: { w: number; h: 
   };
 }
 
-/** 把图重采样到打印网格，取出像素。Canvas 的缩放已经是面积平均，够用。
+/** sRGB 编码值 → 线性光。缩图必须在这上面做平均，见 resample。 */
+const SRGB_TO_LINEAR = (() => {
+  const t = new Float32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    const u = i / 255;
+    t[i] = u <= 0.04045 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4);
+  }
+  return t;
+})();
+
+function linearToSrgb(v: number): number {
+  const x = v <= 0 ? 0 : v >= 1 ? 1 : v;
+  const u = x <= 0.0031308 ? x * 12.92 : 1.055 * Math.pow(x, 1 / 2.4) - 0.055;
+  return u * 255;
+}
+
+/** 缩图时每个输出格覆盖的原图像素数。见 resample —— 2 已经够，再大只是白烧。 */
+const SUPERSAMPLE = 2;
+
+/** 一个打印格能分到几个原图像素。
+ *
+ * 小于 1 就是在**放大**：格子比原图的像素还密，多出来的全是插值算出来的，
+ * 原图里没有的细节不会因为网格变密而长出来 —— 只会长出一圈渐变，
+ * 而渐变正是最容易被叠色浓度推成异色的东西。蕾丝这种全靠细线的地方最先垮。
+ * 这个数只跟取景框和网格有关，跟浓度、白底都无关，所以能单独看。 */
+function srcPxPerCell(gridW: number): number {
+  if (!source) return 0;
+  const srcW = shape === "rect" ? source.bitmap.width : crop.w;
+  return srcW / gridW;
+}
+
+/** 把图重采样到打印网格，取出像素。**平均必须在线性光上做**。
+ *
+ * Canvas 的 drawImage 缩图是在 sRGB 编码值上平均的，而 sRGB 是弯的：白 255 和
+ * 深蓝 45 各占一半，它给 150，物理上正确的是 190 —— **暗了 29/255**。
+ * 一格墨的台阶本来就粗，29 足够把它推过一整层：那条边缘从 C1M1 变成 C2M2Y1。
+ *
+ * 这正是蕾丝出问题的地方。0.1mm/px 下蕾丝几乎全是"白线 + 深蓝描边"的过渡格，
+ * 每一格都被压暗一层，于是细节糊成一条、颜色从线里漫出来 —— 你看到的
+ * "细节没了 + 颜色溢出"是同一件事的两面。
+ *
+ * 做法：先画到 2 倍网格（这一步 canvas 通常在放大或轻微缩小，弯不出多少），
+ * 再由我们自己把 2×2 在线性光里合成一格。真正的缩放全落在正确的那一步上。
  *
  * crop 给的是**原图像素坐标**里的取景框，和裁剪控件预览用的是同一个矩形，
  * 所以框里看到什么就印出什么。框可以比原图大（缩到最小时），
@@ -490,9 +532,12 @@ function resample(
   gridH: number,
   framed = false,
 ): Uint8ClampedArray {
+  const ss = SUPERSAMPLE;
+  const cw = gridW * ss;
+  const ch = gridH * ss;
   const canvas = document.createElement("canvas");
-  canvas.width = gridW;
-  canvas.height = gridH;
+  canvas.width = cw;
+  canvas.height = ch;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error(t("浏览器不支持 Canvas", "Canvas is unavailable"));
   ctx.imageSmoothingEnabled = true;
@@ -503,29 +548,46 @@ function resample(
   // 不能只是裁掉：裁掉的话构图顶到边的东西（比如气泡框）照样丢，只是从"被挡住"
   // 变成"被切掉"。要的是整幅都看得见，所以是缩，不是切。
   const bezel = bezelMm();
-  const inset = bezel > 0 ? Math.round((bezel / artSizeMm().w) * gridW) : 0;
+  const inset = bezel > 0 ? Math.round((bezel / artSizeMm().w) * cw) : 0;
   if (inset > 0) {
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, gridW, gridH);
+    ctx.fillRect(0, 0, cw, ch);
     ctx.save();
     ctx.translate(inset, inset);
-    ctx.scale((gridW - 2 * inset) / gridW, (gridH - 2 * inset) / gridH);
+    ctx.scale((cw - 2 * inset) / cw, (ch - 2 * inset) / ch);
   }
 
   if (framed) {
-    paintFramed(ctx, bitmap, gridW, gridH);
+    paintFramed(ctx, bitmap, cw, ch);
   } else {
-    ctx.drawImage(bitmap, 0, 0, gridW, gridH);
+    ctx.drawImage(bitmap, 0, 0, cw, ch);
   }
   if (inset > 0) ctx.restore();
-  const rgba = ctx.getImageData(0, 0, gridW, gridH).data;
+  const rgba = ctx.getImageData(0, 0, cw, ch).data;
 
-  // 引擎吃紧凑的 RGB，去掉 alpha 通道
+  // 在线性光上把 ss×ss 合成一格，再转回 sRGB 交给引擎。
+  // 引擎吃紧凑的 RGB，alpha 在这儿一并去掉。
   const rgb = new Uint8ClampedArray(gridW * gridH * 3);
-  for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
-    rgb[j] = rgba[i];
-    rgb[j + 1] = rgba[i + 1];
-    rgb[j + 2] = rgba[i + 2];
+  const inv = 1 / (ss * ss);
+  for (let gy = 0; gy < gridH; gy += 1) {
+    for (let gx = 0; gx < gridW; gx += 1) {
+      let lr = 0;
+      let lg = 0;
+      let lb = 0;
+      for (let dy = 0; dy < ss; dy += 1) {
+        let src = ((gy * ss + dy) * cw + gx * ss) * 4;
+        for (let dx = 0; dx < ss; dx += 1) {
+          lr += SRGB_TO_LINEAR[rgba[src]];
+          lg += SRGB_TO_LINEAR[rgba[src + 1]];
+          lb += SRGB_TO_LINEAR[rgba[src + 2]];
+          src += 4;
+        }
+      }
+      const o = (gy * gridW + gx) * 3;
+      rgb[o] = linearToSrgb(lr * inv);
+      rgb[o + 1] = linearToSrgb(lg * inv);
+      rgb[o + 2] = linearToSrgb(lb * inv);
+    }
   }
   return rgb;
 }
@@ -586,9 +648,14 @@ function requestPreview(): void {
   els.stSize.textContent = `${widthMm.toFixed(0)} × ${heightMm.toFixed(0)} mm`;
   const asked = Math.round(Math.max(widthMm, heightMm) / mmPerPx());
   const capped = asked > GRID_MAX;
+  const perCell = srcPxPerCell(gridW);
+  const sampling = perCell >= 1
+    ? t(`原图 ${perCell.toFixed(1)} px/格`, `${perCell.toFixed(1)} src px/cell`)
+    : t(`原图只有 ${perCell.toFixed(2)} px/格 · 在放大`,
+        `only ${perCell.toFixed(2)} src px/cell · upscaling`);
   els.stGrid.textContent = capped
-    ? `${gridW} × ${gridH} px（已封顶）`
-    : `${gridW} × ${gridH} px`;
+    ? `${gridW} × ${gridH} px（已封顶） · ${sampling}`
+    : `${gridW} × ${gridH} px · ${sampling}`;
   const pct = Math.round(artScore(lastFlatness) * 100);
   els.styleOut.textContent = t(
     `自动 · 插画度 ${pct}%${mergeFilterFor(lastFlatness) < 3 ? " · 免滤波" : ""}`,

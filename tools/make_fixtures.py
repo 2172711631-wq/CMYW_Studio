@@ -26,6 +26,7 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
 from main import (  # noqa: E402
+    _resize_linear_light,
     MIN_WHITE_LAYERS,
     RGB_CLIP_MIN,
     _layers_from_rgb_v3,
@@ -94,8 +95,11 @@ def main(argv: list[str]) -> int:
     lw, ly, lm, lc = layers["W"], layers["Y"], layers["M"], layers["C"]
 
     # --- 分色基准 ---
-    # 同时存下重采样后的 RGB，TS 侧直接吃它，把 resize 差异排除在比对之外
-    img = cv2.resize(_imread(source), (GRID_W, GRID_H), interpolation=cv2.INTER_AREA)
+    # 同时存下重采样后的 RGB，TS 侧直接吃它，把 resize 差异排除在比对之外。
+    # **必须和 separate_layers 内部用同一个缩图函数** —— 这里曾经是裸的 INTER_AREA，
+    # 和流水线里的碰巧一致所以看不出来；流水线改成线性光平均之后就对不上了：
+    # 存进去的 rgb 和存进去的层数不再是同一张图，TS 拿 rgb 怎么算都对不上。
+    img = _resize_linear_light(_imread(source), (GRID_W, GRID_H))
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     separation = {

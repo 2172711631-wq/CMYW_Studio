@@ -238,11 +238,27 @@ def flatness_of(img: np.ndarray) -> float:
     return float((np.maximum(right, down) <= 2).mean())
 
 
+def _resize_linear_light(img: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    """缩图，**平均在线性光上做**（与网页侧 resample 同义）。
+
+    sRGB 是弯的：白 255 和深蓝 45 各占一半，直接在编码值上平均给的是 150，
+    物理上正确的是 190 —— 暗了 29/255。一格墨的台阶本来就粗，29 足以把它
+    推过一整层，那条边缘就从 C1M1 变成 C2M2Y1。抗锯齿边、细蕾丝这类
+    "整片都是过渡格"的地方因此糊成一团、颜色从线里漫出来。
+
+    INTER_AREA 本身没错，错在喂给它的是编码值。先解码成线性光，缩完再编回去。
+    """
+    lin = img.astype(np.float32) / 255.0
+    lin = np.where(lin <= 0.04045, lin / 12.92, ((lin + 0.055) / 1.055) ** 2.4)
+    out = cv2.resize(lin, size, interpolation=cv2.INTER_AREA)
+    out = np.clip(out, 0.0, 1.0)
+    srgb = np.where(out <= 0.0031308, out * 12.92, 1.055 * out ** (1 / 2.4) - 0.055)
+    return np.clip(srgb * 255.0 + 0.5, 0, 255).astype(np.uint8)
+
+
 def flatness_probe(img_bgr: np.ndarray) -> float:
     """流水线用：先缩到探针尺寸再量。太小量不准，太大白费时间。"""
-    probe = cv2.resize(
-        img_bgr, (FLATNESS_PROBE, FLATNESS_PROBE), interpolation=cv2.INTER_AREA
-    )
+    probe = _resize_linear_light(img_bgr, (FLATNESS_PROBE, FLATNESS_PROBE))
     return flatness_of(probe)
 
 
@@ -445,11 +461,11 @@ def generate_cmyw_layers(
         tw = int(target_grid_w)
         if target_grid_h and int(target_grid_h) > 0:
             th = int(target_grid_h)
-            img_bgr = cv2.resize(img_bgr, (tw, th), interpolation=cv2.INTER_AREA)
+            img_bgr = _resize_linear_light(img_bgr, (tw, th))
         else:
             h0, w0 = img_bgr.shape[:2]
             th = max(1, int(round(h0 * float(tw) / max(1, w0))))
-            img_bgr = cv2.resize(img_bgr, (tw, th), interpolation=cv2.INTER_AREA)
+            img_bgr = _resize_linear_light(img_bgr, (tw, th))
 
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
     img_rgb = np.clip(img_rgb, RGB_CLIP_MIN, 1.0)
