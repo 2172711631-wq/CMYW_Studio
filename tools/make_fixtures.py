@@ -38,7 +38,6 @@ from main import (  # noqa: E402
     generate_cmyw_layers,
     dither_block_for,
     dither_screen_for,
-    MAX_WHITE_LAYERS,
     min_ink_area_for,
     keep_floor_for,
     lift_chroma_only_for,
@@ -151,7 +150,9 @@ def main(argv: list[str]) -> int:
         "mm_per_px": 0.10,
         "dither_block": dither_block_for(0.10),
         "dither_screen": dither_screen_for(tuned_flat),
-        "white_max": MAX_WHITE_LAYERS,
+        # 生产里先停用了（见 main.MAX_WHITE_LAYERS），但代码还在，
+        # 基准显式给 6 把这条路钉住 —— 没人测的分支迟早两边不一样
+        "white_max": 6,
         "min_ink_area": min_ink_area_for(0.10),
     }
     tuned_rgb = np.clip(rgb.astype(np.float32) / 255.0, RGB_CLIP_MIN, 1.0)

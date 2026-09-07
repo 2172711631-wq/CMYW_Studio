@@ -85,7 +85,19 @@ LAYER_HEIGHT = 0.08
 #
 # 下限没有往 4 以下放：白层最少的地方正是画面最亮的地方，也正是最容易透出灯珠
 # 的地方。放到 2 的话色差能到 11.8，但要先确认扩散片挡得住 —— 那是实物问题。
-MAX_WHITE_LAYERS = int(os.environ.get("FDM_MAX_WHITE_LAYERS", "6") or "6")
+# 先停在 4（= 关掉可变，退回一整块白）。
+#
+# 可变白本身是对的：色差 21.8 → 16.3，中性灰天生就中性。但实测发现白层会**碎**——
+# 一张线稿上白裂成 960 块，其中 919 块不到 8 格，全贴着线边。白是底，每块碎屑就是
+# 一小片多出来的厚度，透光看就是每条线边跟着一圈亮度噪声，也就是"边缘粗糙"。
+#
+# 试过按等值块把碎屑压回下一档，960 → 330，但压不干净：被 5/6 包住的小块 4
+# 只能往上填、不能往下压，得做双向的形态学清理，越修越复杂。
+#
+# 真正的解法多半在别处 —— Lab 查表选配方时，相近的颜色天然落到同一条配方上，
+# 白的选择本来就是空间连贯的，不会碎。所以这条等 ColorDB 那一版一起做。
+# 代码全留着，把这个数改回 6 就能重新打开。
+MAX_WHITE_LAYERS = int(os.environ.get("FDM_MAX_WHITE_LAYERS", "4") or "4")
 
 MIN_WHITE_LAYERS = 4
 
@@ -775,7 +787,7 @@ def _layers_from_rgb_v3(
         y, MAX_LAYERS_Y, neutral=(k_back / float(DENSITY_Y)) if lift_chroma_only else None, **kw
     )
 
-    # 清掉比喷嘴还小的彩色杂点。白不清 —— 它是底，清出洞来就漏光了。
+    # 清掉比喷嘴还小的彩色杂点；白层的碎屑压回下一档（不清成 0，那会在底上开洞）
     if min_ink_area > 1:
         n_c = _drop_small_blobs(n_c, min_ink_area)
         n_m = _drop_small_blobs(n_m, min_ink_area)
