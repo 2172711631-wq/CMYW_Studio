@@ -270,29 +270,41 @@ describe("build3mf（立牌外壳：四件一盘）", () => {
     expect(cfg).not.toContain("modifier_part");
   });
 
-  it("四件是四个独立对象，同在第二个盘 —— 一盘画一盘框", async () => {
+  it("四件合成一个对象，仍在第二个盘 —— 一盘画一盘框", async () => {
     const zip = readZip((await buildStandee()).data);
     const cfg = text(zip, "Metadata/model_settings.config");
     // 盘还是两个：画片一盘、外壳一盘
     expect(cfg.match(/key="plater_id"/g)?.length).toBe(2);
     expect(cfg).toContain("立牌外壳建议0.2mm层高打印");
-    // 但第二个盘上绑着四个对象实例 —— 合成一个对象的话，切片器里选不中单件、
-    // 挪不动，尺寸还按整组算，一靠近屏蔽区就报碰撞
+    // 第二个盘上只有一个对象实例。拆成四个对象时支撑各算各的，
+    // 相邻两件在交界处互相打架 —— 合成一个之后支撑统一生成。
     const plate2 = cfg.slice(cfg.indexOf('key="plater_id" value="2"'));
-    expect(plate2.match(/<model_instance>/g)?.length).toBe(4);
-    // 四个对象各有各的 id 和 build item
+    expect(plate2.match(/<model_instance>/g)?.length).toBe(1);
     const model = text(zip, "3D/3dmodel.model");
-    expect(model.match(/<item objectid=/g)?.length).toBe(5); // 画片 1 + 外壳 4
-    const obj2 = text(zip, "3D/Objects/object_2.model");
-    expect(obj2.match(/<object /g)?.length).toBe(4);
+    expect(model.match(/<item objectid=/g)?.length).toBe(2); // 画片 1 + 外壳 1
   });
 
-  it("四件之间的相对摆位没丢 —— 各对象的 transform 不能都一样", async () => {
-    const model = text(readZip((await buildStandee()).data), "3D/3dmodel.model");
-    const xs = [...model.matchAll(/<item objectid="1\d"[^>]*?transform="([^"]+)"/g)]
-      .map((m) => Number(m[1].trim().split(/\s+/)[9]));
-    expect(xs.length).toBe(4);
-    expect(new Set(xs).size).toBeGreaterThan(1);
+  it("四件仍是对象里的四个 part —— 合并的是对象，不是网格", async () => {
+    const zip = readZip((await buildStandee()).data);
+    const cfg = text(zip, "Metadata/model_settings.config");
+    const plate2obj = cfg.slice(cfg.lastIndexOf("<object id="));
+    // 四件各自还是一个 part，切片器里能分别看到、能单独换颜色
+    expect(plate2obj.match(/<part id=/g)?.length).toBe(4);
+    // 而且都得是实体 —— 有一件被写成 modifier_part 就等于那件不打出来
+    expect(plate2obj.match(/subtype="normal_part"/g)?.length).toBe(4);
+  });
+
+  it("四件之间的相对摆位没丢 —— 合并后靠网格坐标留住", async () => {
+    const zip = readZip((await buildStandee()).data);
+    const obj2 = text(zip, "3D/Objects/object_2.model");
+    // 一个对象一个 transform，位置只能记在顶点里：
+    // 取每个 mesh 的 x 中心，四件不该挤在同一处
+    const centres = [...obj2.matchAll(/<mesh>([\s\S]*?)<\/mesh>/g)].map((m) => {
+      const xs = [...m[1].matchAll(/x="(-?[\d.]+)"/g)].map((v) => Number(v[1]));
+      return (Math.min(...xs) + Math.max(...xs)) / 2;
+    });
+    expect(centres.length).toBe(4);
+    expect(new Set(centres.map((v) => Math.round(v))).size).toBeGreaterThan(1);
   });
 
   it("包围盒是四件的并集，整组在盘上居中", async () => {

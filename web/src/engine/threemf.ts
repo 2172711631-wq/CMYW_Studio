@@ -412,10 +412,15 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
   // ---- 外壳：网格中心归零，Z 靠 transform 抬到贴盘 ----
   // 第二个盘上的对象表。
   //
-  // 分不分对象是有讲究的：**修改器必须和它的本体同属一个对象**，否则它谁也修改不到；
-  // 而真正的实体件必须**各自成对象**，否则切片器把整套壳当成一个对象 —— 在里面选不中
-  // 单件、挪不动，而且尺寸按整组算，稍微靠近屏蔽区就直接报"可能发生碰撞"。
-  // 所以规则是：修改器跟着本体走，其余每件独立。
+  // 第二盘上的所有件合成**一个对象**。
+  //
+  // 曾经是每件各自成对象（修改器跟着本体），理由是能单独选中、挪动，而且尺寸
+  // 按单件算、不会误报靠近屏蔽区。代价是**支撑各算各的** —— 相邻两件的支撑在
+  // 交界处互相打架，实物上就是那一片支撑拆不干净、表面拉毛。
+  //
+  // 现在换回一个对象：支撑在整盘范围内统一生成，交界处不再冲突。
+  // 屏蔽区那头由摆盘时的前角留空来管（plate_layout 的 clears_corners），
+  // 不再靠拆对象来绕。想单独挪某一件的话，在切片器里对象右键拆分即可。
   interface ShellObject {
     objectId: number;
     identifyId: number;
@@ -435,24 +440,15 @@ export async function build3mf(options: Build3mfOptions): Promise<Build3mfResult
 
   if (shell) {
     const extras = shell.extraParts ?? [];
-    const groups: { name: string; members: { name: string; mesh: Mesh; subtype: string }[] }[] =
-      second.normal
-        ? [
-            { name: shellName, members: [{ name: shellName, mesh: shell.body, subtype: "normal_part" }] },
-            { name: second.name, members: [{ name: second.name, mesh: shell.modifier, subtype: "normal_part" }] },
-          ]
-        : [
-            {
-              name: shellName,
-              members: [
-                { name: shellName, mesh: shell.body, subtype: "normal_part" },
-                { name: second.name, mesh: shell.modifier, subtype: "modifier_part" },
-              ],
-            },
-          ];
-    for (const e of extras) {
-      groups.push({ name: e.name, members: [{ name: e.name, mesh: e.mesh, subtype: "normal_part" }] });
-    }
+    const members: { name: string; mesh: Mesh; subtype: string }[] = [
+      { name: shellName, mesh: shell.body, subtype: "normal_part" },
+      // 修改器仍然是 modifier_part —— 它只改参数，当实体打出来就是块废料
+      { name: second.name, mesh: shell.modifier, subtype: second.normal ? "normal_part" : "modifier_part" },
+      ...extras.map((e) => ({ name: e.name, mesh: e.mesh, subtype: "normal_part" })),
+    ];
+    const groups: { name: string; members: { name: string; mesh: Mesh; subtype: string }[] }[] = [
+      { name: shellName, members },
+    ];
 
     // 各对象之间的相对摆位要留住（烘焙时就排好了），所以先算整组的中心，
     // 每个对象再按它相对整组的偏移落到盘上。
