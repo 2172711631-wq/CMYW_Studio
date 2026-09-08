@@ -684,6 +684,7 @@ function requestPreview(): void {
     minInkArea: minInkAreaFor(mmPerPx()),
     inkScale: Number(els.inkScale.value) / 100,
     minWhiteLayers: Number(els.whiteBase.value),
+    mmPerPx: mmPerPx(),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   sendPreview(msg);
@@ -789,6 +790,7 @@ function startExport(): void {
     minInkArea: minInkAreaFor(mmPerPx()),
     inkScale: Number(els.inkScale.value) / 100,
     minWhiteLayers: Number(els.whiteBase.value),
+    mmPerPx: mmPerPx(),
     mergeFilter: mergeFilterFor(lastFlatness),
   };
   worker.postMessage(msg, [rgb.buffer]);

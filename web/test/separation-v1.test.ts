@@ -19,6 +19,7 @@ describe("v1 与 Python 基准一致", () => {
   const result = separateCMYW(Uint8Array.from(rgb), gridW, gridH, {
     dither: reference.dither,
     profile: "v1",
+    mmPerPx: reference.mm_per_px,
   });
 
   it("这份基准钉的确实是 v1", () => {
@@ -51,7 +52,9 @@ describe("v1 与 Python 基准一致", () => {
   }
 
   it("默认档就是 v1 —— 不传 profile 也要走同一条路", () => {
-    const dflt = separateCMYW(Uint8Array.from(rgb), gridW, gridH, { dither: reference.dither });
+    const dflt = separateCMYW(Uint8Array.from(rgb), gridW, gridH, {
+      dither: reference.dither, mmPerPx: reference.mm_per_px,
+    });
     expect([...dflt.C].filter((v, i) => v !== C[i]).length).toBe(0);
     expect([...dflt.M].filter((v, i) => v !== M[i]).length).toBe(0);
     expect([...dflt.Y].filter((v, i) => v !== Y[i]).length).toBe(0);

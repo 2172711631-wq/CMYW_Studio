@@ -119,3 +119,22 @@ export const MAX_WHITE_LAYERS = 4;
  *
  * 与 Python 侧 LIFT_MIN_CHROMA 同值。 */
 export const LIFT_MIN_CHROMA = 18 / 255;
+
+/** 线条优先的总墨量上限。与 Python 侧 LINE_INK_FLOOR 等同名常数一致。
+ *
+ * 实测常数装上之后才看清：旧的那版最厚 22 层 1.76mm，**近四分之一的面积透光
+ * 低于 0.5%** —— 那不是"颜色深"，是一堵黑墙，线条和它旁边的底色一起糊在里头。
+ * 量下来（线 vs 紧挨着的底色）：
+ *
+ *                  线的透光   旁边底色   对比
+ *     原图            9.8%      50.6%    5.2×
+ *     旧的那版        0.000%     0.331%   两边都看不见
+ *     底3%/线0.5%     0.33%     20.19%   底色亮六十倍，线仍是最暗的
+ *
+ * 所以给两个下限：底色压狠一点让它透光，线条单独放宽，墨的预算花在线上。
+ * 深色区因此比原图淡 —— 有意换的：透光 0.3% 的地方没有颜色，它只是黑的。 */
+export const LINE_INK_FLOOR = 0.005;
+export const FILL_INK_FLOOR = 0.03;
+export const LINE_CONTRAST = 18 / 255;
+export const LINE_DARK = 150 / 255;
+export const LINE_BLUR_MM = 0.3;

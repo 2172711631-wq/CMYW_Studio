@@ -46,6 +46,7 @@ export type WorkerRequest =
       minInkArea?: number;
       inkScale?: number;
       minWhiteLayers?: number;
+      mmPerPx?: number;
       /** 网格化前的中值滤波尺寸。3 = 默认，1 = 关掉（线稿要关，否则细线被吃） */
       mergeFilter?: number;
       widthMm: number;
@@ -71,6 +72,7 @@ export type WorkerRequest =
       minInkArea?: number;
       inkScale?: number;
       minWhiteLayers?: number;
+      mmPerPx?: number;
       /** 网格化前的中值滤波尺寸。3 = 默认，1 = 关掉（线稿要关，否则细线被吃） */
       mergeFilter?: number;
       /** 圆形时要不要连吧唧外壳一起打包 */
@@ -121,6 +123,7 @@ function separationOptions(req: {
   minInkArea?: number;
   inkScale?: number;
   minWhiteLayers?: number;
+  mmPerPx?: number;
 }) {
   return {
     // 白层可变：白是最细的那把尺，专管中性档位。上限见 constants 的注释。
@@ -134,6 +137,7 @@ function separationOptions(req: {
     minInkArea: req.minInkArea,
     inkScale: req.inkScale,
     minWhiteLayers: req.minWhiteLayers,
+    mmPerPx: req.mmPerPx,
   };
 }
 

@@ -26,7 +26,12 @@ import {
   GAMMA_EXPONENT,
   LAYER_DITHER_AMT,
   LAYER_KEEP_FLOOR,
+  FILL_INK_FLOOR,
   LIFT_MIN_CHROMA,
+  LINE_BLUR_MM,
+  LINE_CONTRAST,
+  LINE_DARK,
+  LINE_INK_FLOOR,
   LINEAR_COEFFICIENT,
   MAX_LAYERS_C,
   MAX_LAYERS_M,
@@ -202,6 +207,8 @@ export interface SeparateOptions {
    * 1–2 格宽的笔画一起抹平。
    */
   minInkArea?: number;
+  /** 打印格的物理尺寸（mm）。线条判据要按毫米定，换精细度才不跑偏。 */
+  mmPerPx?: number;
   /**
    * 叠色浓度：整体乘在目标光密度上。1 = 原样。
    *
@@ -283,6 +290,43 @@ function quantize(
   return out;
 }
 
+/** 半径 r 的方框模糊，边缘按最近像素延拓。先横后竖。
+ *
+ * 刻意不用高斯：Python 那边要逐像素对上，方框模糊两边写出来一定一样，
+ * 高斯核的系数会因为实现不同差最后一位 —— 而这个输出要拿去和门槛比大小，
+ * 差一位就可能把一整条线判成不是线。
+ *
+ * **累加顺序是约定的一部分**：偏移从 −r 走到 +r，每加一次都落回 float32。
+ * 与 Python 的 _box_blur 同序、同精度。 */
+function boxBlurF32(src: Float32Array, w: number, h: number, r: number): Float32Array {
+  if (r < 1) return src;
+  const k = f(2 * r + 1);
+  const tmp = new Float32Array(src.length);
+  const out = new Float32Array(src.length);
+  for (let y = 0; y < h; y += 1) {
+    const row = y * w;
+    for (let x = 0; x < w; x += 1) {
+      let acc = 0;
+      for (let d = -r; d <= r; d += 1) {
+        const xx = x + d < 0 ? 0 : x + d > w - 1 ? w - 1 : x + d;
+        acc = f(acc + src[row + xx]);
+      }
+      tmp[row + x] = f(acc / k);
+    }
+  }
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      let acc = 0;
+      for (let d = -r; d <= r; d += 1) {
+        const yy = y + d < 0 ? 0 : y + d > h - 1 ? h - 1 : y + d;
+        acc = f(acc + tmp[yy * w + x]);
+      }
+      out[y * w + x] = f(acc / k);
+    }
+  }
+  return out;
+}
+
 /**
  * v1：最早那版，图上是什么色就照着分什么色。
  *
@@ -305,6 +349,7 @@ function separateV1(
   inkScale: number,
   dither: boolean,
   ditherAmount: number,
+  mmPerPx: number,
 ): LayerSet {
   const count = gridW * gridH;
   const clipMin = f(RGB_CLIP_MIN);
@@ -314,6 +359,7 @@ function separateV1(
   const needC = new Float32Array(count);
   const needM = new Float32Array(count);
   const needY = new Float32Array(count);
+  const luma = new Float32Array(count);
 
   for (let i = 0; i < count; i += 1) {
     const p = i * 3;
@@ -329,6 +375,23 @@ function separateV1(
     needC[i] = f(f(eR - whiteCost) / DENSITY_C);
     needM[i] = f(f(eG - whiteCost) / DENSITY_M);
     needY[i] = f(f(eB - whiteCost) / DENSITY_Y);
+    luma[i] = f(f(f(r + g) + b) / 3);
+  }
+
+  // 线条优先的限墨。**必须在取整之前做**：先缩再取整只取整一次，
+  // 反过来是缩完再取整、取了两遍，误差翻倍。
+  const blurR = Math.max(1, Math.round(LINE_BLUR_MM / (mmPerPx > 0 ? mmPerPx : 0.1)));
+  const around = boxBlurF32(luma, gridW, gridH, blurR);
+  for (let i = 0; i < count; i += 1) {
+    const isLine = f(around[i] - luma[i]) > f(LINE_CONTRAST) && luma[i] < f(LINE_DARK);
+    const dens = f(f(f(needC[i] * DENSITY_C) + f(needM[i] * DENSITY_M)) + f(needY[i] * DENSITY_Y));
+    const budget = Math.max(f(-Math.log(isLine ? LINE_INK_FLOOR : FILL_INK_FLOOR) - whiteCost), 0);
+    if (dens > budget) {
+      const k = f(budget / Math.max(dens, 1e-9));
+      needC[i] = f(needC[i] * k);
+      needM[i] = f(needM[i] * k);
+      needY[i] = f(needY[i] * k);
+    }
   }
 
   // v1 也抬浅层（Python 侧 _quantize_layers 的默认行为就是抬），门槛用模块常数。
@@ -389,7 +452,8 @@ export function separateCMYW(
   const clipMin = f(RGB_CLIP_MIN);
 
   if (profile === "v1") {
-    return separateV1(rgb, gridW, gridH, whiteLayers, inkScale, dither, ditherAmount);
+    return separateV1(rgb, gridW, gridH, whiteLayers, inkScale, dither, ditherAmount,
+      options.mmPerPx ?? 0.1);
   }
 
   const needC = new Float32Array(count);
