@@ -163,14 +163,19 @@ USB_R = 1.65
 # 这个数直接抄灯箱母本（web/src/engine/shell.ts 的 USB.liftZ）—— 那边是
 # 「躺倒的外壳，内底面到 Type-C 口底」，和这里是同一个量，也正是这块板的高度。
 USB_Z = 1.55
-# **口的位置从仓顶算，不从仓底算。**
+# **口的位置从仓顶算，不从仓底算，而且用的就是 USB_Z 这个数。**
 #
-# 仓高 11.9，板子高 7.0 —— 底下空着 4.9mm，没有任何东西托住板子，它到底停在
-# 哪个高度全看装的人。按仓底算就等于赌它落到底；实物里为了对上口，得在板子
-# 底下垫一块电池。改成从顶面往下量：板子最高点顶住仓顶，位置就是确定的。
+# 灯箱那边 USB_Z 量的是「板子贴着安装面时，Type-C 壳底离安装面多高」。
+# 灯箱的安装面在下（板子躺在内底面上），立牌这边板子是热熔螺丝吊在顶壁上、
+# **板底贴着仓顶**，安装面翻到了上面 —— 同一个 1.55，方向反过来：
+# 从仓顶往下量到口的上沿。
 #
-# 顶面到口上沿 = 板子最高点 − Type-C 壳顶 = PCB_H − (USB_Z + USB_H)。
+# 仓高 11.9、板高 7.0，底下空着 4.9mm 什么都没有。按仓底算就是赌板子会落到底，
+# 而它被螺丝吊着，根本不会 —— 实物里得在底下垫一块电池才对得上口。
 USB_FROM_TOP = True
+# 沉台离底座外顶面至少留这么多料。口挪到仓顶附近之后，14×8 的沉台会往上顶到
+# 顶壁里；不管的话那一角只剩薄薄一层，看着像没做完。够不到就整体往下让。
+USB_BORE_TOP_MIN = 1.2
 # Type-C 靠左摆：板子 35.5 宽，贴着电池仓左端放，右边整条留给 52mm 的电池。
 # 居中的话板子会把仓从中间劈开，两边谁都放不下电池。
 USB_X = -1.0          # <0 = 靠左，0 = 居中，>0 = 靠右
@@ -591,10 +596,15 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
     # 按仓底算等于赌板子会落到底。
     usb_cx = p["usb_cx"]
     if USB_FROM_TOP:
-        usb_top_gap = PCB_H - (USB_Z + USB_H)      # 板顶顶住仓顶时，口上沿离仓顶多远
-        usb_cz = z_bay1 - usb_top_gap - USB_H / 2.0
+        usb_cz = z_bay1 - USB_Z - USB_H / 2.0      # 板底贴仓顶，同一个 USB_Z 反着量
     else:
         usb_cz = z_bay0 + USB_Z + USB_H / 2.0
+    # 沉台单独定心：口贴着仓顶时，居中的沉台会顶穿顶壁。往下让到留够料为止，
+    # 但不能让到盖不住口 —— 两个条件夹出来的位置。
+    bore_cz = usb_cz
+    top_limit = BASE_T - USB_BORE_TOP_MIN - USB_BORE_H / 2.0
+    if bore_cz > top_limit:
+        bore_cz = max(top_limit, usb_cz + USB_H / 2.0 - USB_BORE_H / 2.0 + 0.4)
     base = base.cut(
         _round_slot(
             USB_W, USB_H, USB_R,
@@ -612,7 +622,7 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
                 USB_BORE_W, USB_BORE_H, USB_BORE_R,
                 BASE_D - (BASE_WALL - USB_FACE_T), BASE_D + 1.0,
                 cx=usb_cx,
-                cz=usb_cz,
+                cz=bore_cz,
             )
         )
 
@@ -1071,8 +1081,8 @@ def spec() -> list[tuple[str, str]]:
             "电路板",
             f'{PCB_W:.0f} × {PCB_D:.0f} × {PCB_H:.0f} mm 的位；'
             f"背面 Type-C {USB_W:.1f}×{USB_H:.1f}（R{USB_R}，同灯箱），"
-            f"口上沿离**仓顶** {PCB_H - (USB_Z + USB_H):.2f} mm"
-            f"（板顶顶住仓顶时的位置；仓比板高 {p['bay_h'] - PCB_H:.1f}mm，按仓底算等于赌它落到底）、"
+            f"口上沿离**仓顶** {USB_Z} mm"
+            f"（板底热熔螺丝吊在顶壁上，同灯箱那个数反着量）、"
             f"{'靠左' if USB_X < 0 else ('靠右' if USB_X > 0 else '居中')}；"
             f"外面挖 {USB_BORE_W:.0f}×{USB_BORE_H:.0f} 沉台，那一面只剩 {USB_FACE_T} 厚，插头才插得到底",
         ),
