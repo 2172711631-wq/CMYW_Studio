@@ -63,8 +63,13 @@ ART_SLOT_T = 1.85
 DIFFUSER_T = 0.5      # 扩散片，磨砂 PET/PP。雾度靠材料不靠厚度
 DIFFUSER_SLOT_T = 0.7
 CAVITY_D = 10.0       # 灯板盘壁高度，也就是腔深。灯带平贴只占 LED_T，剩下的是混光距离
-CAVITY_INSET = 1.5    # 前框里托住扩散片的那圈台阶宽度，同时决定灯板插口大小。
-                      # 必须小于 BEZEL_LAP，否则台阶会从取景窗里露出来
+# 前框里托住扩散片的那圈台阶宽度，同时决定灯板插口大小。
+# 必须小于 BEZEL_LAP，否则台阶会从取景窗里露出来。
+#
+# 从 1.5 收到 0.6：画片要从背面**穿过这个插口**才能进槽，所以画片印多大被它卡死。
+# 1.5 时画片只能印到 156.8，比自己的槽（160.3）小了每边 1.75mm —— 实物里
+# "跟灯板一样大、卡不住"就是这么来的。收窄之后画片印到 158.5，余量降到 0.9。
+CAVITY_INSET = 0.6
 
 # —— 灯条 ——
 # 不做让台：灯条直接贴在灯板盘壁与盘底的那道内角里，那道角本身就是定位基准。
@@ -80,7 +85,10 @@ WIRE_H = 3.0
 
 # —— 前框 ——
 BEZEL_T = 1.6         # 正面压边厚
-BEZEL_LAP = 4.0       # 正面四边各压住画片多少。压边吃掉的是画片，尽量小
+# 正面四边各压住画片多少。压边吃掉的是画片，本来一直往小了取 ——
+# 但实物证明压不住：4.0 时只压住画片 2.25mm，而画片在自己的槽里每边还有
+# 1.75mm 的横向余量，一晃就走位。压边宽一点是唯一能从正面按住它的东西。
+BEZEL_LAP = 6.0
 BEZEL_CHAMFER = 1.0   # 压边背面台阶根部的 45° 倒角，会被钳到 BEZEL_T - 0.6
 WALL = 7.0            # 画片槽外侧的结构壁厚。看到的边框 = BEZEL_LAP + WALL
 FIT = 0.3             # 画片槽 / 扩散片槽的横向公差
@@ -95,7 +103,12 @@ BACK_BEVEL = 5.0      # 背面外沿的 45° 斜切，让侧面看着薄
 # —— 灯板模块 ——
 # 盘底厚，它就是背板。1.0 的时候用手一推就能把画片整个顶动 ——
 # 背板是画片唯一的后靠，薄了就等于没靠。
-MODULE_BACK_T = 1.8
+#
+# 1.8 还是不够：这块板 159 × 119，四周只有 1.5mm 的盘壁撑着，中间什么都没有，
+# 实物上肉眼可见地凹下去一片。板的抗弯正比于厚度的三次方 ——
+# 1.8 → 2.8 是 (2.8/1.8)³ ≈ 3.8 倍，这一步比加什么加强筋都直接，
+# 而且盘底在腔里，加筋会在画面上投出暗带，加厚不会。
+MODULE_BACK_T = 2.8
 MODULE_RIM = 1.5      # 盘壁厚
 MODULE_FIT = 0.3      # 灯板外形比前框插口小多少（总量）
 # 卡扣。原来不生效的原因很硬：盘壁四边闭合成一个盒，**盒是不会向内让的**，
@@ -150,6 +163,14 @@ USB_R = 1.65
 # 这个数直接抄灯箱母本（web/src/engine/shell.ts 的 USB.liftZ）—— 那边是
 # 「躺倒的外壳，内底面到 Type-C 口底」，和这里是同一个量，也正是这块板的高度。
 USB_Z = 1.55
+# **口的位置从仓顶算，不从仓底算。**
+#
+# 仓高 11.9，板子高 7.0 —— 底下空着 4.9mm，没有任何东西托住板子，它到底停在
+# 哪个高度全看装的人。按仓底算就等于赌它落到底；实物里为了对上口，得在板子
+# 底下垫一块电池。改成从顶面往下量：板子最高点顶住仓顶，位置就是确定的。
+#
+# 顶面到口上沿 = 板子最高点 − Type-C 壳顶 = PCB_H − (USB_Z + USB_H)。
+USB_FROM_TOP = True
 # Type-C 靠左摆：板子 35.5 宽，贴着电池仓左端放，右边整条留给 52mm 的电池。
 # 居中的话板子会把仓从中间劈开，两边谁都放不下电池。
 USB_X = -1.0          # <0 = 靠左，0 = 居中，>0 = 靠右
@@ -167,12 +188,17 @@ USB_X = -1.0          # <0 = 靠左，0 = 居中，>0 = 靠右
 TOUCH_SIDE = 1        # +1 = 右侧壁，-1 = 左侧壁
 TOUCH_PAD_W = 26.0    # 外凸指示块，沿 Y
 TOUCH_PAD_H = 10.0    # 沿 Z
-TOUCH_PAD_OUT = 1.2   # 凸出侧壁多少
+# 改成**往里凹**。外凸有两处不好：手指摸到的是最厚的地方（壁厚 3.0 再加 1.2），
+# 感应要穿 4.2mm；而且凸起在侧面很扎眼。凹进去正相反 —— 手指自然落进这个窝，
+# 位置比凸起还好找，而且那一块壁只剩 3.0 − 1.2 = 1.8mm，耦合路径短了一半还多。
+TOUCH_PAD_OUT = -1.2  # <0 = 内凹，>0 = 外凸
 TOUCH_PAD_R = 3.0     # 凸块圆角，别硌手
 # 凸起做成**空心环**，不是实心块。实心块正好压在感应区上，手指到内壁的路径
 # 从 3.0 变成 4.2 —— 本来就是要让它薄一点，加个实心块等于反着来。
 # 环只在四周凸，中间那一块还是原壁厚，摸得到位置又不增加厚度。
-TOUCH_PAD_RING = 2.5  # 环的宽度；0 = 退回实心块
+# 内凹之后不需要留环了：环当初是为了避开"实心块压在感应区上加厚路径"，
+# 而凹坑本来就是在减厚。整块凹下去，手感也整。
+TOUCH_PAD_RING = 0.0  # 环的宽度；0 = 整块（内凹时固定用这个）
 BAY_WALL = 2.5        # 电池仓顶壁（也就是底座上表面那层）
 # 电池仓四周的壁厚。原来写死 4.0，比顶壁 2.5 厚不少 —— 壁厚不匀不好看，
 # 而且 Type-C 那面 4mm 太厚：插头的包胶还没进去就顶到壳了，插不到位。
@@ -560,14 +586,21 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
         )
     )
 
-    # 背面 Type-C：圆角口，尺寸照灯箱母本；靠一边摆，把电池那条留整
+    # 背面 Type-C：圆角口，尺寸照灯箱母本；靠一边摆，把电池那条留整。
+    # 高度从**仓顶**往下量，见 USB_FROM_TOP —— 仓比板子高出 4.9mm，
+    # 按仓底算等于赌板子会落到底。
     usb_cx = p["usb_cx"]
+    if USB_FROM_TOP:
+        usb_top_gap = PCB_H - (USB_Z + USB_H)      # 板顶顶住仓顶时，口上沿离仓顶多远
+        usb_cz = z_bay1 - usb_top_gap - USB_H / 2.0
+    else:
+        usb_cz = z_bay0 + USB_Z + USB_H / 2.0
     base = base.cut(
         _round_slot(
             USB_W, USB_H, USB_R,
             p["bay_y1"] - 1.0, BASE_D + 1.0,
             cx=usb_cx,
-            cz=z_bay0 + USB_Z + USB_H / 2.0,
+            cz=usb_cz,
         )
     )
 
@@ -579,21 +612,34 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
                 USB_BORE_W, USB_BORE_H, USB_BORE_R,
                 BASE_D - (BASE_WALL - USB_FACE_T), BASE_D + 1.0,
                 cx=usb_cx,
-                cz=z_bay0 + USB_Z + USB_H / 2.0,
+                cz=usb_cz,
             )
         )
 
-    # 侧面触摸：只在外面凸一块指示，内壁不动 —— 铜箔要贴在平的内壁上
+    # 侧面触摸。TOUCH_PAD_OUT < 0 = 往里凹一个窝：手指自然落进去，比凸起还好找，
+    # 而且那一块壁只剩 BASE_WALL − |OUT|，感应路径短一半还多。内壁不动 ——
+    # 铜箔仍然贴在平的内壁上。
     sx = 1.0 if TOUCH_SIDE >= 0 else -1.0
     tx = p["base_w"] / 2.0
     ty = (p["bay_y0"] + p["bay_y1"]) / 2.0
     tz = z_bay0 + p["bay_h"] / 2.0
-    if TOUCH_PAD_OUT > 1e-4:
+    if abs(TOUCH_PAD_OUT) > 1e-4:
+        depth_out = abs(TOUCH_PAD_OUT)
+        recess = TOUCH_PAD_OUT < 0.0
+
         def _pad(w: float, h: float, r: float) -> cq.Workplane:
+            # 凸：从外壁往外长 depth_out，再往里咬 0.6 保证和壁焊在一起。
+            # 凹：从外壁往里挖 depth_out，再往外伸 0.6 保证切得干净。
             blk = (
                 cq.Workplane("XY")
-                .box(TOUCH_PAD_OUT + 0.6, w, h, centered=(False, True, True))
-                .translate((sx * tx - (0.6 if sx > 0 else TOUCH_PAD_OUT), ty, tz))
+                .box(depth_out + 0.6, w, h, centered=(False, True, True))
+                .translate((
+                    sx * tx - (
+                        (0.6 if sx > 0 else depth_out) if not recess
+                        else (depth_out if sx > 0 else 0.6)
+                    ),
+                    ty, tz,
+                ))
             )
             if r > 1e-4:
                 try:
@@ -603,12 +649,12 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
             return blk
 
         pad = _pad(TOUCH_PAD_W, TOUCH_PAD_H, TOUCH_PAD_R)
-        if TOUCH_PAD_RING > 1e-4:
+        if not recess and TOUCH_PAD_RING > 1e-4:
             iw = TOUCH_PAD_W - 2.0 * TOUCH_PAD_RING
             ih = TOUCH_PAD_H - 2.0 * TOUCH_PAD_RING
             if iw > 1.0 and ih > 1.0:
                 pad = pad.cut(_pad(iw, ih, max(0.0, TOUCH_PAD_R - TOUCH_PAD_RING)))
-        base = base.union(pad)
+        base = base.cut(pad) if recess else base.union(pad)
 
     if print_orientation:
         base = base.rotate((0, 0, 0), (1, 0, 0), 180)
@@ -1025,13 +1071,18 @@ def spec() -> list[tuple[str, str]]:
             "电路板",
             f'{PCB_W:.0f} × {PCB_D:.0f} × {PCB_H:.0f} mm 的位；'
             f"背面 Type-C {USB_W:.1f}×{USB_H:.1f}（R{USB_R}，同灯箱），"
-            f"口底离仓底 {USB_Z} mm、{'靠左' if USB_X < 0 else ('靠右' if USB_X > 0 else '居中')}；"
+            f"口上沿离**仓顶** {PCB_H - (USB_Z + USB_H):.2f} mm"
+            f"（板顶顶住仓顶时的位置；仓比板高 {p['bay_h'] - PCB_H:.1f}mm，按仓底算等于赌它落到底）、"
+            f"{'靠左' if USB_X < 0 else ('靠右' if USB_X > 0 else '居中')}；"
             f"外面挖 {USB_BORE_W:.0f}×{USB_BORE_H:.0f} 沉台，那一面只剩 {USB_FACE_T} 厚，插头才插得到底",
         ),
         (
             "侧面触摸",
             f"{'右' if TOUCH_SIDE >= 0 else '左'}侧壁，内壁保持平的（铜箔贴内壁）；"
-            f"外面凸一圈 {TOUCH_PAD_W:.0f}×{TOUCH_PAD_H:.0f} 的环（宽 {TOUCH_PAD_RING}、高 {TOUCH_PAD_OUT}），"
+        f"右侧壁，内壁保持平的（铜箔贴内壁）；外面{'凹进去' if TOUCH_PAD_OUT < 0 else '凸出'}"
+        f"一块 {TOUCH_PAD_W:.0f}×{TOUCH_PAD_H:.0f}、深 {abs(TOUCH_PAD_OUT)} 的窝，"
+        f"那一块壁只剩 {BASE_WALL - abs(TOUCH_PAD_OUT) if TOUCH_PAD_OUT < 0 else BASE_WALL:.1f} mm。"
+        f"**触摸区必须 100% 填充** —— 用 ringframe_touch_modifier 当修改器，这步不能省",
             f"环中间不加厚，手指到内壁还是 {BASE_WALL} mm。"
             f"**触摸区必须 100% 填充** —— "
             f"用 ringframe_touch_modifier 当修改器，这步不能省",
