@@ -238,13 +238,14 @@ def main(argv: list[str]) -> int:
     # 它是最简单的一条路，也正因为简单最容易被"顺手优化"改掉。
     v1_layers = generate_cmyw_layers(
         str(source), target_grid_w=GRID_W, target_grid_h=GRID_H,
-        dither=False, color_profile="v1", auto_tune=False,
+        dither=False, color_profile="v1", auto_tune=False, mm_per_px=0.1,
     )
     if not v1_layers:
         print("v1 分色失败 / v1 separation failed", file=sys.stderr)
         return 3
     v1 = {
         "grid_w": GRID_W, "grid_h": GRID_H, "profile": "v1", "dither": False,
+        "mm_per_px": 0.1,
         "rgb": rgb.reshape(-1).tolist(),
         "W": v1_layers["W"].reshape(-1).tolist(),
         "Y": v1_layers["Y"].reshape(-1).tolist(),

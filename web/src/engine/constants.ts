@@ -13,10 +13,26 @@ export const LAYER_HEIGHT = 0.08;
 export const MIN_WHITE_LAYERS = 4;
 
 /** 每层 0.08mm 贡献的光密度，拓竹 PLA Basic 上的工作值（非仪器实测）。 */
+// 单层光密度：**量出来的，不是猜的**（2026-09-07，全色域色卡背光实测）。
+//
+// 之前这三个数是估的，而且估错得很厉害 —— 尤其是黄：
+//
+//     假设   实测   一层黄之后蓝光还剩
+//     0.68   2.51   模型以为 0.507，实际 0.081
+//
+// 差了六倍。浅肉色需要的是一丝丝黄，给下去的却是一记闷棍 ——
+// "肉色太深""整体发深""接近橘红"全都出在这儿，跟分色算法无关。
+//
+// 拟合方法：只用还没饱和的那几级（透射率 > 0.03）做 ln T = -D·n 的最小二乘。
+// 更暗的几级已经贴着相机噪声底，比值不可信。
+// 实测的饱和点：黄 2 层、青 5 层、品红 6 层 —— 再往上加是同一个黑。
+//
+// 白的 0.11 还是估的：它是这次测量的参照白本身，量不出来。
+// 重新标定：py -3.11 tools/measure_colorchart.py 照片.jpg
 export const DENSITY_W = 0.11;
-export const DENSITY_C = 0.58;
-export const DENSITY_M = 0.5;
-export const DENSITY_Y = 0.68;
+export const DENSITY_C = 0.92;
+export const DENSITY_M = 0.68;
+export const DENSITY_Y = 2.51;
 
 /** 各色最大层数。超过这个厚度收益递减且换料成本剧增。 */
 export const MAX_LAYERS_C = 6;
@@ -103,3 +119,22 @@ export const MAX_WHITE_LAYERS = 4;
  *
  * 与 Python 侧 LIFT_MIN_CHROMA 同值。 */
 export const LIFT_MIN_CHROMA = 18 / 255;
+
+/** 线条优先的总墨量上限。与 Python 侧 LINE_INK_FLOOR 等同名常数一致。
+ *
+ * 实测常数装上之后才看清：旧的那版最厚 22 层 1.76mm，**近四分之一的面积透光
+ * 低于 0.5%** —— 那不是"颜色深"，是一堵黑墙，线条和它旁边的底色一起糊在里头。
+ * 量下来（线 vs 紧挨着的底色）：
+ *
+ *                  线的透光   旁边底色   对比
+ *     原图            9.8%      50.6%    5.2×
+ *     旧的那版        0.000%     0.331%   两边都看不见
+ *     底3%/线0.5%     0.33%     20.19%   底色亮六十倍，线仍是最暗的
+ *
+ * 所以给两个下限：底色压狠一点让它透光，线条单独放宽，墨的预算花在线上。
+ * 深色区因此比原图淡 —— 有意换的：透光 0.3% 的地方没有颜色，它只是黑的。 */
+export const LINE_INK_FLOOR = 0.005;
+export const FILL_INK_FLOOR = 0.03;
+export const LINE_CONTRAST = 18 / 255;
+export const LINE_DARK = 150 / 255;
+export const LINE_BLUR_MM = 0.3;

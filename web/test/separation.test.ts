@@ -105,32 +105,37 @@ describe("抬浅层：只认自己的彩色度（v2 存档档案）", () => {
   };
   const LOW = 0.32 * 0.224;   // 插画度 97% 时的门槛
 
-  it("饱和蓝在低门槛下会被塞进一层黄（这就是发绿的原因）", () => {
-    const bad = separateCMYW(patch(70, 115, 190), 2, 2, { dither: false, keepFloor: LOW, profile: "v2" });
-    expect(bad.Y[0]).toBe(1);
+  // 这三条以前钉的是"低门槛会给饱和蓝塞一层黄，所以发绿"。
+  //
+  // **那层黄是假的常数造出来的。** 黄的单层密度一直按 0.68 算，色卡实测是 2.51 ——
+  // 需求 = 光密度 ÷ 密度，分母大了 3.7 倍，需求就小 3.7 倍，直接取整到 0。
+  // 换上实测常数之后，饱和蓝拿到的是干净的 C2M1，一层黄都没有。
+  //
+  // 也就是说当初为了这个才加的 lift_chroma_only，治的是常数的病。留着它无害
+  // （现在开不开结果一样），但别再把它当成"发绿"的解释。
+  it("饱和蓝不再被塞黄 —— 实测常数下那层黄根本够不着", () => {
+    const opts = { dither: false, keepFloor: LOW, profile: "v2" } as const;
+    const got = separateCMYW(patch(70, 115, 190), 2, 2, opts);
+    expect(got.Y[0]).toBe(0);
+    expect(got.C[0]).toBeGreaterThan(0);
+    expect(got.M[0]).toBeGreaterThan(0);
   });
 
-  it("只认彩色度之后，那层黄不再出现，青品原样保留", () => {
-    const ok = separateCMYW(patch(70, 115, 190), 2, 2, {
-      dither: false, keepFloor: LOW, liftChromaOnly: true, profile: "v2",
-    });
-    expect(ok.Y[0]).toBe(0);
-    expect(ok.C[0]).toBeGreaterThan(0);
-    expect(ok.M[0]).toBeGreaterThan(0);
+  it("开不开 liftChromaOnly 现在给的是同一个结果", () => {
+    const base = { dither: false, keepFloor: LOW, profile: "v2" } as const;
+    const off = separateCMYW(patch(70, 115, 190), 2, 2, base);
+    const on = separateCMYW(patch(70, 115, 190), 2, 2, { ...base, liftChromaOnly: true });
+    expect([on.C[0], on.M[0], on.Y[0]]).toEqual([off.C[0], off.M[0], off.Y[0]]);
   });
 
-  // 已知没修干净的一块，钉在这儿免得以后当成新问题重查：
-  // 三色墨的单层密度并不相等（c/m/y 是各自除以 DENSITY_C/M/Y 得来的），
-  // 所以一块中性灰在层数这个单位下本来就不是三色等量 —— k = min(c,m,y) 扣完之后
-  // 品红仍会剩一点。门槛降下来之后这点余量够得着，灰就会多一层品红、偏粉。
-  // 这跟上面那层黄不是一回事：那层黄的彩色度是**精确的 0**，纯靠中性底顶上去，
-  // 属于判据用错了量；这里的余量是真实存在的需求，只是 1 层的量化把它放大了。
-  // 要治得动密度归一化，那是分色核心，不顺手改。
-  it("中性灰仍会多一层品红 —— 这是墨密度不等，不是同一个毛病", () => {
+  // 中性灰仍然不是三色等量：单层密度 C0.92 / M0.68 / Y2.51 差得更远了，
+  // 同样的光密度除下来层数当然不等。低门槛下灰会拿到 C1M1Y0 —— 偏青，
+  // 不再是以前的偏粉。要治得动密度归一化，那是分色核心，不顺手改。
+  it("中性灰在低门槛下仍会偏色 —— 墨密度不等，跟上面那层黄不是一回事", () => {
     const opts = { dither: false, keepFloor: LOW, liftChromaOnly: true, profile: "v2" } as const;
     const grey = separateCMYW(patch(205, 205, 205), 2, 2, opts);
-    expect([grey.C[0], grey.Y[0]]).toEqual([0, 0]);
-    expect(grey.M[0]).toBe(1);
+    expect(grey.Y[0]).toBe(0);
+    expect(grey.C[0] === grey.M[0] && grey.C[0] > 0).toBe(true);
     // 默认门槛下够不着，所以只在插画档才看得见
     const dflt = separateCMYW(patch(205, 205, 205), 2, 2, { dither: false, profile: "v2" });
     expect([dflt.C[0], dflt.M[0], dflt.Y[0]]).toEqual([0, 0, 0]);
@@ -181,11 +186,21 @@ describe("v3 分色档案", () => {
     expect(run(px(252, 224, 205), "v3").M[0]).toBeGreaterThan(0);
   });
 
-  it("中性灰不再凭空长出色度 —— v2 偏粉的根因", () => {
-    for (const v of [120, 160, 205]) {
-      const g = run(px(v, v, v), "v3");
-      const set = new Set([g.C[0], g.M[0], g.Y[0]]);
-      expect(set.size, `灰 ${v} 三色不等：C${g.C[0]} M${g.M[0]} Y${g.Y[0]}`).toBe(1);
+  // 这条以前钉的是"v3 分中性灰会得到三色等量"。**那只在旧常数下成立**：
+  // 0.58 / 0.50 / 0.68 彼此够接近，同一份中性密度除下来取整正好相等。
+  // 色卡实测是 0.92 / 0.68 / 2.51，差了三倍多 —— 同样一份中性密度换算成层数
+  // 是 0.44 / 0.60 / 0.16，取整就成了 C0 M1 Y0，灰直接变粉。
+  //
+  // 所以"三色等量"从来不是 v3 的性质，是常数凑巧。真正该钉的是**结果中性**，
+  // 而实测常数下它做不到 —— 这是墨的强弱差太远 + 一层的台阶太粗，
+  // 不是分色的毛病。钉在这儿，别再当成新 bug 重查。
+  it("中性灰：实测常数下 v3 保不住中性 —— 三支墨强弱差三倍多", () => {
+    const g = run(px(120, 120, 120), "v3");
+    expect([g.C[0], g.M[0], g.Y[0]]).toEqual([0, 1, 0]);   // 偏粉，已知
+    for (const v of [160, 205]) {
+      const q = run(px(v, v, v), "v3");
+      // 更亮的灰整段够不着一层，反而是干净的
+      expect([q.C[0], q.M[0], q.Y[0]], `灰 ${v}`).toEqual([0, 0, 0]);
     }
   });
 

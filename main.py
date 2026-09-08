@@ -111,7 +111,23 @@ MAX_WHITE_LAYERS = int(os.environ.get("FDM_MAX_WHITE_LAYERS", "4") or "4")
 
 MIN_WHITE_LAYERS = 4
 
-DENSITY_W, DENSITY_C, DENSITY_M, DENSITY_Y = 0.11, 0.58, 0.50, 0.68
+# 单层光密度：**量出来的，不是猜的**（2026-09-07，全色域色卡背光实测）。
+#
+# 之前这三个数是估的，而且估错得很厉害 —— 尤其是黄：
+#
+#     假设   实测   一层黄之后蓝光还剩
+#     0.68   2.51   模型以为 0.507，实际 0.081
+#
+# 差了六倍。浅肉色需要的是一丝丝黄，给下去的却是一记闷棍 ——
+# "肉色太深""整体发深""接近橘红"全都出在这儿，跟分色算法无关。
+#
+# 拟合方法：只用还没饱和的那几级（透射率 > 0.03）做 ln T = -D·n 的最小二乘。
+# 更暗的几级已经贴着相机噪声底，比值不可信。
+# 实测的饱和点：黄 2 层、青 5 层、品红 6 层 —— 再往上加是同一个黑。
+#
+# 白的 0.11 还是估的：它是这次测量的参照白本身，量不出来。
+# 重新标定：py -3.11 tools/measure_colorchart.py 照片.jpg
+DENSITY_W, DENSITY_C, DENSITY_M, DENSITY_Y = 0.11, 0.92, 0.68, 2.51
 MAX_LAYERS_C, MAX_LAYERS_M, MAX_LAYERS_Y = 6, 6, 6
 
 GAMMA_EXPONENT = 0.72
@@ -502,6 +518,7 @@ def generate_cmyw_layers(
         n_w, n_y, n_m, n_c = _layers_from_rgb_v1(
             img_rgb, min_white_layers, dither=use_dither,
             ink_scale=float(tune["ink_scale"]) if tune else 1.0,
+            mm_per_px=float(tune["mm_per_px"]) if tune and "mm_per_px" in tune else mm_per_px,
         )
     else:
         builder = _layers_from_rgb_v2 if profile == "v2" else _layers_from_rgb_v3
@@ -596,12 +613,85 @@ def _quantize_layers(
     return np.clip(np.round(x), 0, max_layers).astype(np.int32)
 
 
+# ── 线条优先的总墨量上限 ────────────────────────────────────────────────
+#
+# 实测常数装上之后才看清：以前那版最厚 22 层 1.76mm，**近四分之一的面积
+# 透光低于 0.5%** —— 那不是"颜色深"，那是一堵黑墙，线条和它旁边的底色
+# 一起糊在里头。量给的判据很直白（原图 / 打出来，线 vs 紧邻的底色）：
+#
+#                  线的透光   旁边底色   对比
+#     原图            9.8%      50.6%    5.2×
+#     旧的那版        0.000%     0.331%   两边都看不见
+#     底3%/线0.5%     0.33%     20.19%   底色亮了六十倍，线仍是最暗的
+#
+# 所以给两个下限：**底色压狠一点让它透光，线条单独放宽**，墨的预算花在线上。
+# 深色区因此会比原图淡 —— 这是有意换的：一块透光 0.3% 的地方没有颜色，
+# 它只是黑的，把它提到 20% 才谈得上还原。
+LINE_INK_FLOOR = 0.005      # 线条处最暗允许透多少光
+FILL_INK_FLOOR = 0.03       # 其余地方最暗允许透多少光
+LINE_CONTRAST = 18.0 / 255.0   # 比周围暗这么多才算线
+LINE_DARK = 150.0 / 255.0      # 且自身要够暗，免得把浅色的软阴影也当成线
+LINE_BLUR_MM = 0.3             # "周围"取多大一圈；按毫米定，换精细度不跑偏
+
+
+def _box_blur(a: np.ndarray, r: int) -> np.ndarray:
+    """半径 r 的方框模糊，边缘按最近像素延拓。分两趟，先横后竖。
+
+    刻意不用高斯：网页那边要逐像素对上，方框模糊两边写出来一定一样，
+    高斯核的系数则会因为实现不同差最后一位 —— 而这里的输出要拿去和门槛比大小，
+    差一位就可能把一整条线判成不是线。
+
+    累加顺序也是约定的一部分：偏移从 -r 走到 +r，全程 float32。
+    换成 cumsum 会快些，但求和顺序不同，float32 下末位就对不上了。
+    """
+    if r < 1:
+        return a.astype(np.float32)
+    h, w = a.shape
+    k = np.float32(2 * r + 1)
+    src = a.astype(np.float32)
+    tmp = np.zeros_like(src)
+    cols = np.arange(w)
+    for d in range(-r, r + 1):
+        tmp += src[:, np.clip(cols + d, 0, w - 1)]
+    tmp /= k
+    out = np.zeros_like(src)
+    rows = np.arange(h)
+    for d in range(-r, r + 1):
+        out += tmp[np.clip(rows + d, 0, h - 1), :]
+    out /= k
+    return out
+
+
+def _line_mask(img_rgb: np.ndarray, mm_per_px: float | None) -> np.ndarray:
+    """哪些格子是线条：比周围一圈明显暗，而且自己也够暗。"""
+    lum = img_rgb.mean(axis=2).astype(np.float32)
+    r = max(1, int(round(LINE_BLUR_MM / float(mm_per_px or 0.1))))
+    around = _box_blur(lum, r)
+    return (around - lum > LINE_CONTRAST) & (lum < LINE_DARK)
+
+
+def _cap_total_ink(
+    need_c: np.ndarray, need_m: np.ndarray, need_y: np.ndarray,
+    white_cost: np.ndarray, is_line: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """把三色一起按比例缩到"这一格至少还能透这么多光"，色相不动。
+
+    只压超预算的格子，中间调一格不改 —— 整体缩会把本来就通透的地方一起洗白。
+    """
+    dens = need_c * float(DENSITY_C) + need_m * float(DENSITY_M) + need_y * float(DENSITY_Y)
+    floor = np.where(is_line, LINE_INK_FLOOR, FILL_INK_FLOOR)
+    budget = np.maximum(-np.log(floor) - white_cost, 0.0)
+    k = np.where(dens > budget, budget / np.maximum(dens, 1e-9), 1.0).astype(np.float32)
+    return need_c * k, need_m * k, need_y * k
+
+
 def _layers_from_rgb_v1(
     img_rgb: np.ndarray,
     min_white_layers: int,
     *,
     dither: bool,
     ink_scale: float = 1.0,
+    mm_per_px: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """最早那版：图上是什么色，就照着分什么色。
 
@@ -618,9 +708,16 @@ def _layers_from_rgb_v1(
     e_b = (-np.log(img_rgb[..., 2])) ** GAMMA_EXPONENT * LINEAR_COEFFICIENT * ink_scale
     n_w = np.full(e_r.shape, min_white_layers, dtype=np.int32)
     white_cost = DENSITY_W * n_w
-    n_c = _quantize_layers((e_r - white_cost) / DENSITY_C, MAX_LAYERS_C, dither=dither)
-    n_m = _quantize_layers((e_g - white_cost) / DENSITY_M, MAX_LAYERS_M, dither=dither)
-    n_y = _quantize_layers((e_b - white_cost) / DENSITY_Y, MAX_LAYERS_Y, dither=dither)
+    need_c = (e_r - white_cost) / DENSITY_C
+    need_m = (e_g - white_cost) / DENSITY_M
+    need_y = (e_b - white_cost) / DENSITY_Y
+    # 限墨在**取整之前**做：先缩再取整只取整一次，反过来会取两次、误差翻倍
+    need_c, need_m, need_y = _cap_total_ink(
+        need_c, need_m, need_y, white_cost, _line_mask(img_rgb, mm_per_px)
+    )
+    n_c = _quantize_layers(need_c, MAX_LAYERS_C, dither=dither)
+    n_m = _quantize_layers(need_m, MAX_LAYERS_M, dither=dither)
+    n_y = _quantize_layers(need_y, MAX_LAYERS_Y, dither=dither)
     return n_w, n_y, n_m, n_c
 
 
