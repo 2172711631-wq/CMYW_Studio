@@ -791,12 +791,70 @@ PARTS = {
 PLATE_BIAS = (3.0, 3.0)
 
 
+def plate_split(
+    shapes: dict[str, cq.Workplane],
+    *,
+    attach: dict | None = None,
+    bed: float = 256.0,
+) -> list:
+    """能一盘就一盘，一盘放不下就找一个两盘的分法。
+
+    立牌这四件加起来是放不下的 —— 光前框（174×134）和灯板（159×119）两件，
+    最紧的摆法就是 174 × 256，已经超了 9mm。以前这里排不下就退化成"一列排到底"，
+    出来 452mm 长的一盘，等于把摆盘这件事丢回给人。
+
+    分法不是随便挑的：穷举所有二分，两边都得自己排得下，取**较大那盘最小**的一组。
+    实测最优是「前框 + 底盖」和「底座 + 灯板」，两盘各 178×215 和 184×206。
+    """
+    one = plate_layout(shapes, attach=attach, bed=bed, strict=True)
+    if one is not None:
+        return [one]
+
+    names = list(shapes)
+    best = None
+    for r in range(1, len(names)):
+        for pick in itertools.combinations(names, r):
+            rest = tuple(n for n in names if n not in pick)
+            if not rest:
+                continue
+            a = plate_layout({k: shapes[k] for k in pick},
+                             attach=attach, bed=bed, strict=True)
+            if a is None:
+                continue
+            b = plate_layout({k: shapes[k] for k in rest},
+                             attach=attach, bed=bed, strict=True)
+            if b is None:
+                continue
+            span = max(_span(a), _span(b))
+            if best is None or span < best[0]:
+                best = (span, a, b, pick, rest)
+    if best is None:
+        print("  ⚠ 连两盘都排不下 —— 退回一列排到底，自己在切片器里摆")
+        return [plate_layout(shapes, attach=attach, bed=bed)]
+    _, a, b, pick, rest = best
+    print(f"  一盘放不下，拆两盘：[{' + '.join(pick)}] 和 [{' + '.join(rest)}]")
+    return [a, b]
+
+
+def _span(items: list) -> float:
+    """一盘上所有零件的最长边。"""
+    xs0 = xs1 = ys0 = ys1 = None
+    for entry in items:
+        bb = entry[1].val().BoundingBox()
+        xs0 = bb.xmin if xs0 is None else min(xs0, bb.xmin)
+        xs1 = bb.xmax if xs1 is None else max(xs1, bb.xmax)
+        ys0 = bb.ymin if ys0 is None else min(ys0, bb.ymin)
+        ys1 = bb.ymax if ys1 is None else max(ys1, bb.ymax)
+    return max(xs1 - xs0, ys1 - ys0)
+
+
 def plate_layout(
     shapes: dict[str, cq.Workplane] | None = None,
     *,
     bed: float = 256.0,
     gap: float = 3.0,
     keepout: tuple[float, float] = (28.0, 34.0),
+    strict: bool = False,
     bias: tuple[float, float] = PLATE_BIAS,
     attach: dict[str, list[tuple[str, cq.Workplane]]] | None = None,
 ) -> list:
@@ -826,7 +884,8 @@ def plate_layout(
         return w if deg == 0 else w.rotate((0, 0, 0), (0, 0, 1), 90.0)
 
     p = params()
-    cw, ch = size(shapes["cover"])
+    # 套嵌只在「前框和底盖同在一盘」时才谈得上 —— 分盘之后可能只来一件
+    cw, ch = size(shapes["cover"]) if "cover" in shapes else (0.0, 0.0)
     kx, ky = keepout
 
     def arrange(placed, total_w):
@@ -863,8 +922,10 @@ def plate_layout(
         return True
 
     best = None
-    for nest in (True, False):
-        names = ["frame", "base", "module"] + ([] if nest else ["cover"])
+    have = [n for n in ("frame", "base", "module", "cover") if n in shapes]
+    can_nest = "cover" in shapes and "frame" in shapes
+    for nest in ((True, False) if can_nest else (False,)):
+        names = [n for n in have if not (nest and n == "cover")]
         for rots in itertools.product((0, 90), repeat=len(names)):
             dims = []
             for n, r in zip(names, rots, strict=True):
@@ -903,6 +964,8 @@ def plate_layout(
                         best = (key, total_w, total_h, nest, names, rots, placed)
 
     if best is None:
+        if strict:
+            return None
         print("  ⚠ 排不出既放得下、前角又空着的摆法 —— 这个规格得拆两盘")
         y = 0.0
         out = []
@@ -969,7 +1032,7 @@ def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
         .rotate((0, 0, 0), (1, 0, 0), 180)
         .translate((0.0, BASE_D, BASE_T))
     )
-    packed = [plate_layout(shapes, attach={"base": [("触摸区实心", touch)]})]
+    packed = plate_split(shapes, attach={"base": [("触摸区实心", touch)]})
     plates = [
         (f"外壳 {i + 1}/{len(packed)}" if len(packed) > 1 else "外壳全套", items)
         for i, items in enumerate(packed)
@@ -1004,12 +1067,20 @@ def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
 
 
 def _plate_note() -> str:
-    items = plate_layout()
-    xs = [v for _, sh in items for v in (sh.val().BoundingBox().xmin, sh.val().BoundingBox().xmax)]
-    ys = [v for _, sh in items for v in (sh.val().BoundingBox().ymin, sh.val().BoundingBox().ymax)]
+    shapes = {
+        "frame": build_frame(), "module": build_module(),
+        "base": build_base(print_orientation=True), "cover": build_cover(),
+    }
+    plates = plate_split(shapes)
+    out = []
+    for items in plates:
+        bbs = [entry[1].val().BoundingBox() for entry in items]
+        w = max(b.xmax for b in bbs) - min(b.xmin for b in bbs)
+        h = max(b.ymax for b in bbs) - min(b.ymin for b in bbs)
+        out.append(f"{'+'.join(n for n, *_ in items)} {w:.1f} × {h:.1f}")
     return (
-        f"整组 {max(xs) - min(xs):.1f} × {max(ys) - min(ys):.1f} mm"
-        f"（穷举取最长边最短；宽的行摆后面、每行居中，让开前沿屏蔽区）"
+        f"{len(plates)} 盘：" + "；".join(out)
+        + "（穷举取最长边最短；宽的行摆后面、每行居中，让开前沿屏蔽区）"
     )
 
 
@@ -1089,15 +1160,15 @@ def spec() -> list[tuple[str, str]]:
         (
             "侧面触摸",
             f"{'右' if TOUCH_SIDE >= 0 else '左'}侧壁，内壁保持平的（铜箔贴内壁）；"
-        f"右侧壁，内壁保持平的（铜箔贴内壁）；外面{'凹进去' if TOUCH_PAD_OUT < 0 else '凸出'}"
-        f"一块 {TOUCH_PAD_W:.0f}×{TOUCH_PAD_H:.0f}、深 {abs(TOUCH_PAD_OUT)} 的窝，"
-        f"那一块壁只剩 {BASE_WALL - abs(TOUCH_PAD_OUT) if TOUCH_PAD_OUT < 0 else BASE_WALL:.1f} mm。"
-        f"**触摸区必须 100% 填充** —— 用 ringframe_touch_modifier 当修改器，这步不能省",
-            f"环中间不加厚，手指到内壁还是 {BASE_WALL} mm。"
+            f"外面{'凹进去' if TOUCH_PAD_OUT < 0 else '凸出'}一块 "
+            f"{TOUCH_PAD_W:.0f}×{TOUCH_PAD_H:.0f}、深 {abs(TOUCH_PAD_OUT)} 的"
+            f"{'窝' if TOUCH_PAD_OUT < 0 else '台'}，那一块壁"
+            f"{'只剩' if TOUCH_PAD_OUT < 0 else '仍是'} "
+            f"{BASE_WALL - abs(TOUCH_PAD_OUT) if TOUCH_PAD_OUT < 0 else BASE_WALL:.1f} mm。"
             f"**触摸区必须 100% 填充** —— "
             f"用 ringframe_touch_modifier 当修改器，这步不能省",
         ),
-        ("摆盘", f"ringframe.3mf —— 一盘四件：{_plate_note()}"),
+        ("摆盘", f"ringframe.3mf —— {_plate_note()}"),
     ]
 
 
