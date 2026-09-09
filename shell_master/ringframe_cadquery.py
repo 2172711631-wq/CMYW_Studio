@@ -264,6 +264,21 @@ COVER_SNAP_CLR = 0.35
 COVER_TONGUE_T = 1.0
 
 
+def _cover_snap_plan(depth: float) -> dict:
+    """底盖卡扣落在哪、多长 —— 底盖和底座都读这一份，不各算各的。"""
+    slot_half = (depth + GROOVE_FIT) / 2.0
+    a0, a1 = COVER_EDGE, GROOVE_Y - slot_half              # 插槽前面那段净空
+    b0, b1 = GROOVE_Y + slot_half, BASE_D - COVER_EDGE     # 插槽后面那段
+    margin = 2.0                                           # 两头各留一点，别顶到尽头
+    usable = min(a1 - a0, b1 - b0) - 2.0 * margin
+    length = max(6.0, min(COVER_SNAP_LEN, usable))
+    return {
+        "snap_len": length,
+        "snap_y0": (a0 + a1) / 2.0,
+        "snap_y1": (b0 + b1) / 2.0,
+    }
+
+
 def params() -> dict[str, float]:
     pocket_w = ART_W + FIT
     pocket_h = ART_H + FIT
@@ -310,6 +325,12 @@ def params() -> dict[str, float]:
         "art_print_w": socket_w - ART_INSERT_FIT,
         "art_print_h": socket_h - ART_INSERT_FIT,
         "bezel_hold": ((socket_w - ART_INSERT_FIT) - window_w) / 2.0,
+        # 底盖卡扣的 y 位置与长度。**必须避开画框插槽** —— 插槽从上面一直切到
+        # 底盖，落在它范围里的卡扣坑会被整个铲掉。原来按沉槽长度的 0.25/0.75 摆，
+        # 前面那个正好骑在插槽上：坑长 20.7，被切走 17.0，只剩两截碎的，
+        # 一长一短、中心也不在卡扣中间 —— 而底盖上的卡扣是对称的，于是对不上。
+        # 现在把插槽前后两段净空各取中点，长度按短的那段来定。
+        **_cover_snap_plan(z_socket + module_h),
         # 灯条平贴盘底，凸进腔里的只有它自己的厚度；剩下的全是混光距离
         "mix_gap": CAVITY_D - LED_T,
         "led_run": cav_w - 8.0,
@@ -619,9 +640,9 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
         # 倒着打也垂不下来 —— 这正是原来那道方坑做不到的事。
         z_mid = max(0.5, COVER_T - COVER_SNAP_H / 2.0)
         c = COVER_SNAP_CLR
+        snap_len = p["snap_len"]
         for sx in (-1, 1):
-            for sy in (0.25, 0.75):
-                y = COVER_EDGE + (BASE_D - 2.0 * COVER_EDGE) * sy
+            for y in (p["snap_y0"], p["snap_y1"]):
                 x_in = sx * (bay_x + COVER_LIP)
                 x_out = sx * (bay_x + COVER_LIP + COVER_SNAP + c)
                 prof = (
@@ -632,8 +653,8 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
                         (x_in, z_mid + COVER_SNAP_H / 2.0 + c),
                     ])
                     .close()
-                    .extrude(COVER_SNAP_LEN + 2.0 * c)
-                    .translate((0.0, y - COVER_SNAP_LEN / 2.0 - c, 0.0))
+                    .extrude(snap_len + 2.0 * c)
+                    .translate((0.0, y - snap_len / 2.0 - c, 0.0))
                 )
                 base = base.cut(prof)
 
@@ -747,10 +768,12 @@ def build_cover() -> cq.Workplane:
         z_mid = max(0.5, COVER_T - COVER_SNAP_H / 2.0)
         z_top = COVER_T
         z_bot = max(0.2, z_mid - COVER_SNAP_H / 2.0)
-        half = COVER_SNAP_LEN / 2.0
+        snap_len = p["snap_len"]
+        half = snap_len / 2.0
+        # 底盖是居中建的，而 snap_y* 是底座坐标 —— 减去沉槽中心换算过去
+        recess_mid = (COVER_EDGE + (BASE_D - COVER_EDGE)) / 2.0
         for sx in (-1, 1):
-            for sy in (-1, 1):
-                yc = sy * d / 4.0
+            for yc in (p["snap_y0"] - recess_mid, p["snap_y1"] - recess_mid):
                 prof = (
                     cq.Workplane("XZ")
                     .polyline([
@@ -759,7 +782,7 @@ def build_cover() -> cq.Workplane:
                         (sx * w / 2.0, z_top),
                     ])
                     .close()
-                    .extrude(COVER_SNAP_LEN)
+                    .extrude(snap_len)
                     .translate((0.0, yc + half, 0.0))
                 )
                 cover = cover.union(prof)
