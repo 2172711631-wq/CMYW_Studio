@@ -229,6 +229,12 @@ __marimo__/
 # 也顺手挡住以后新增的格式。
 shell_master/out/
 
+# NX / SolidWorks 之类的工程文件。参考模板放本地就行，几百 KB 的二进制
+# 进了库既 diff 不了也没人会去读；`git add -A` 还容易把它顺手带进来（真发生过）。
+*.prt
+*.sldprt
+*.SLDPRT
+
 # 打包产物 / build artifacts
 *.exe
 _internal/
