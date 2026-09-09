@@ -234,6 +234,24 @@ COVER_SNAP = 0.5      # 凸出多少（有舌头能让，比原来的 0.4 再给
 COVER_SNAP_H = 1.0    # 楔形的高度：底面到顶面，1.0 升 0.5 是 27° 的自支撑斜面
 COVER_SNAP_LEN = 20.0 # 每处的长度
 COVER_SNAP_RELIEF = 1.0  # 舌头两侧的豁口宽；0 = 不开（退回不会弯的整板）
+# **给打印偏差留的余量。**
+#
+# 图纸上对得上，实物上对不上 —— 因为 FDM 的坑总比图纸小、凸总比图纸大：
+# 坑的顶面是悬空的，会往下垂进坑里；凸出来的料会往外摊。两头一凑，
+# 0.15 的间隙实际是负的，所以按不进去。
+#
+# 更要命的是底座**倒着打**（上表面朝下），底盖坑那道留住卡扣的台肩正好朝下 ——
+# 整个零件上最容易垂的位置，偏偏是配合面。
+#
+# 两条一起治：坑四周各放 0.35；卡扣和坑都做成**上下都是斜面的菱形**，
+# 没有一个水平面朝下，垂不下来。留住底盖靠的是舌头的弹力顶住斜面，
+# 不是靠一道方肩勾住 —— 对一块电池盖够用，而且这个能打得出来。
+COVER_SNAP_CLR = 0.35
+# 舌头单独削薄。**板厚才是按不进去的主因** —— 1.6 的板在 20mm 长度上几乎不弯，
+# 开了豁口也一样，因为弯的刚度按厚度三次方走：1.6 → 1.0 就软了 4 倍，
+# 同样的力才推得动那 0.5 的过盈。
+# 只削舌头那一小条，底盖其余部分还是 1.6，跨 111mm 不会软塌塌。
+COVER_TONGUE_T = 1.0
 
 
 def params() -> dict[str, float]:
@@ -587,18 +605,27 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
     # 底盖卡扣凹坑。坑要比楔形高一点、深一点：楔形靠底面那道肩留住，
     # 坑底就得在肩的下面，扣进去才有"咔"的一下。
     if COVER_SNAP > 1e-4:
+        # 坑跟着卡扣做成菱形，四周放 COVER_SNAP_CLR。坑里没有一个水平面朝下，
+        # 倒着打也垂不下来 —— 这正是原来那道方坑做不到的事。
+        z_mid = max(0.5, COVER_T - COVER_SNAP_H / 2.0)
+        c = COVER_SNAP_CLR
         for sx in (-1, 1):
             for sy in (0.25, 0.75):
                 y = COVER_EDGE + (BASE_D - 2.0 * COVER_EDGE) * sy
-                x0 = sx * (bay_x + COVER_LIP)
-                x1 = sx * (bay_x + COVER_LIP + COVER_SNAP + 0.15)
-                base = base.cut(
-                    _box_xyz(
-                        min(x0, x1), max(x0, x1),
-                        y - COVER_SNAP_LEN / 2.0 - 0.5, y + COVER_SNAP_LEN / 2.0 + 0.5,
-                        max(0.0, COVER_T - COVER_SNAP_H - 0.3), COVER_T + 0.3,
-                    )
+                x_in = sx * (bay_x + COVER_LIP)
+                x_out = sx * (bay_x + COVER_LIP + COVER_SNAP + c)
+                prof = (
+                    cq.Workplane("XZ")
+                    .polyline([
+                        (x_in, z_mid - COVER_SNAP_H / 2.0 - c),
+                        (x_out, z_mid),
+                        (x_in, z_mid + COVER_SNAP_H / 2.0 + c),
+                    ])
+                    .close()
+                    .extrude(COVER_SNAP_LEN + 2.0 * c)
+                    .translate((0.0, y - COVER_SNAP_LEN / 2.0 - c, 0.0))
                 )
+                base = base.cut(prof)
 
     # 走线：从插槽后墙通到电池仓，贴着底盖走
     z0 = COVER_T + 0.1
@@ -704,25 +731,40 @@ def build_cover() -> cq.Workplane:
         .fillet(3.0)
     )
     if COVER_SNAP > 1e-4:
-        z1 = COVER_T                      # 板顶 = 楔形最窄处（进的时候先碰到这儿）
-        z0 = max(0.2, COVER_T - COVER_SNAP_H)   # 往下渐宽，底面是留住的那道肩
+        # 菱形剖面：最宽处在中间，上下各一道斜面。
+        # 上面那道是导入斜面（推进去时先碰到它），下面那道负责留住。
+        # 两道都是斜的 = 没有水平面朝下 = 打印时不会垂，见 COVER_SNAP_CLR。
+        z_mid = max(0.5, COVER_T - COVER_SNAP_H / 2.0)
+        z_top = COVER_T
+        z_bot = max(0.2, z_mid - COVER_SNAP_H / 2.0)
         half = COVER_SNAP_LEN / 2.0
         for sx in (-1, 1):
             for sy in (-1, 1):
                 yc = sy * d / 4.0
-                # 楔形：XZ 剖面画三角，再沿 Y 拉出去。平躺打时逐层内收 → 自支撑
                 prof = (
                     cq.Workplane("XZ")
                     .polyline([
-                        (sx * w / 2.0, z0),
-                        (sx * (w / 2.0 + COVER_SNAP), z0),
-                        (sx * w / 2.0, z1),
+                        (sx * w / 2.0, z_bot),
+                        (sx * (w / 2.0 + COVER_SNAP), z_mid),
+                        (sx * w / 2.0, z_top),
                     ])
                     .close()
                     .extrude(COVER_SNAP_LEN)
                     .translate((0.0, yc + half, 0.0))
                 )
                 cover = cover.union(prof)
+                # 舌头削薄：从板顶挖掉一层，只留 COVER_TONGUE_T。
+                # 削的是朝仓内那一面，外面看不出来。
+                if COVER_TONGUE_T < COVER_T - 1e-4:
+                    cover = cover.cut(
+                        _box_xyz(
+                            min(sx * (w / 2.0 - 6.0), sx * (w / 2.0 + 1.0)),
+                            max(sx * (w / 2.0 - 6.0), sx * (w / 2.0 + 1.0)),
+                            yc - half - COVER_SNAP_RELIEF,
+                            yc + half + COVER_SNAP_RELIEF,
+                            COVER_TONGUE_T, COVER_T + 1.0,
+                        )
+                    )
                 # 豁口：把卡扣那一段从整板上"切"出一根悬臂舌头。
                 # 不开豁口的话，0.5 的过盈要靠整块板去弯 —— 弯不动，就按不进去。
                 if COVER_SNAP_RELIEF > 1e-4:
