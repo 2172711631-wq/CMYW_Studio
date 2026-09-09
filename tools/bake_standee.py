@@ -14,6 +14,7 @@ web/public/standee/，网页端导出时按需 fetch。
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -22,6 +23,27 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
 from shell_master import ringframe_cadquery as R  # noqa: E402
 from shell_master import threemf_out as T  # noqa: E402
+
+CAD_SRC = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "shell_master", "ringframe_cadquery.py",
+)
+
+
+def cad_sha() -> str:
+    """母本源码的指纹，写进每份烘焙数据里。
+
+    烘出来的是**静态文件**，改了母本不重跑这个脚本，网站照旧发旧模型 ——
+    而页脚那个构建代号只跟着代码走，JS 一变它就变，看起来像是更新了。
+    实物证明这个坑是真会踩的：母本 09-08 改完，网站发的还是 09-04 烘的壳，
+    照着它打了一版才发现。
+
+    所以把源码指纹一起写进去，由 web/test/standee-baked.test.ts 比对：
+    对不上就红，CI 里拦住，不用再靠人记得重跑。
+    """
+    with open(CAD_SRC, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()[:12]
+
 
 OUT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "public", "standee"
@@ -77,6 +99,8 @@ def bake_one(art_w: float, art_h: float) -> tuple[str, int]:
         # 所以要原样带过去让它再加回来 —— 不然两边摆位对不上
         "bias": list(R.PLATE_BIAS),
         "note": "由 shell_master/ringframe_cadquery.py 烘出；改参数后重跑 tools/bake_standee.py",
+        # 母本指纹。对不上就说明这份数据过期了，见 cad_sha()
+        "cadSha": cad_sha(),
         "parts": parts,
     }
     os.makedirs(OUT_DIR, exist_ok=True)
