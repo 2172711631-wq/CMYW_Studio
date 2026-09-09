@@ -223,11 +223,11 @@ __marimo__/
 # 生成物 / generated output
 *.3mf
 *.stl
-!shell_master/preview_shell.stl
 
-# 参数母本生成的产物：STEP、渲染图、摆盘文件都由脚本重出，不入库
-shell_master/*.step
-shell_master/*.png
+# 参数母本的产物全部落在 shell_master/out/：STEP、STL、渲染图、摆盘文件
+# 都由脚本重出，不入库。整个目录忽略比一条条列扩展名干净，
+# 也顺手挡住以后新增的格式。
+shell_master/out/
 
 # 打包产物 / build artifacts
 *.exe

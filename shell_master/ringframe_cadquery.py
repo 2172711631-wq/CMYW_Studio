@@ -1094,6 +1094,20 @@ def plate_layout(
     return out
 
 
+# 生成物统一放 out/，跟源码分开。
+#
+# 以前是直接吐在 shell_master/ 里：6 个源文件混着三十来个 stl/step/3mf/png，
+# 四百多 KB 的源码埋在 4.5MB 的产物里，`ls` 一下根本找不到要改的那个文件。
+# 产物全是跑一次脚本就能重来的东西，不该和源码平级。
+OUT_SUBDIR = "out"
+
+
+def _out_dir(here: str) -> str:
+    d = os.path.join(here, OUT_SUBDIR)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
     paths: dict[str, str] = {}
     shapes = {name: fn() for name, fn in PARTS.items()}
@@ -1283,7 +1297,7 @@ def main() -> None:
         globals()["TILT"] = args.tilt
 
     here = os.path.dirname(os.path.abspath(__file__))
-    paths = export_all(here)
+    paths = export_all(_out_dir(here))
     for name in sorted(paths):
         print(f"已导出 {name}: {os.path.basename(paths[name])}")
     print()

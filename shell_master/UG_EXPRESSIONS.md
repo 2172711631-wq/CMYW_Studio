@@ -35,4 +35,4 @@
 py -3.11 shell_master/shell_cadquery.py
 ```
 
-生成 `shell_master/preview_shell.stl`，用 Bambu Studio 打开检查卡槽 / Type-C / 顶壁厚度。
+生成 `shell_master/out/preview_shell.stl`，用 Bambu Studio 打开检查卡槽 / Type-C / 顶壁厚度。

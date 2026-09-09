@@ -435,7 +435,9 @@ def load_param_sheet() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    out = _ROOT / "preview_shell.stl"
+    out_dir = _ROOT / "out"          # 产物统一放 out/，别和源码混在一起
+    out_dir.mkdir(exist_ok=True)
+    out = out_dir / "preview_shell.stl"
     mesh = export_shell_stl(out)
     p = _active_params()
     lay = _layout(p)
