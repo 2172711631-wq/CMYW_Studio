@@ -1211,18 +1211,41 @@ def _mesh_from_rects(
     return mesh
 
 
+# 相邻通道的轻微串扰，经验值。与网页侧 CROSSTALK_RM / GY / BC 同值。
+CROSSTALK_RM, CROSSTALK_GY, CROSSTALK_BC = 0.04, 0.02, 0.03
+
+
 def simulate_transmitted_rgb(
     l_w: np.ndarray,
     l_y: np.ndarray,
     l_m: np.ndarray,
     l_c: np.ndarray,
-    brightness_ratio: float = 1.6,
+    brightness_ratio: float | None = None,
     *,
-    stretch: bool = True,
+    stretch: bool = False,
 ) -> np.ndarray:
-    e_r = DENSITY_C * l_c + DENSITY_W * l_w + 0.04 * l_m
-    e_g = DENSITY_M * l_m + DENSITY_W * l_w + 0.02 * l_y
-    e_b = DENSITY_Y * l_y + DENSITY_W * l_w + 0.03 * l_c
+    """层数 → 透光后的 RGB。**默认既不拉伸也不加戏**，和网页侧 simulateLit 一致。
+
+    这两个默认值原来是 brightness_ratio=1.6、stretch=True，桌面端的三维预览
+    一直吃着它们 —— 也就是说桌面预览做了两件让画面变好看的事：
+
+      · **拉满对比。** 最暗的像素拉成纯黑、最亮的拉成纯白，跟实际透光多少无关。
+        换上实测的墨密度之后这一步更离谱：真实透光范围跨着好几个数量级，
+        拉伸等于把它整个碾平。
+      · **1.6 倍增益。** 白底本来落在 0.645，乘完是 1.03，最亮的那个通道被削平
+        成纯白、别的通道不削 —— 削掉一个通道就是凭空拉高饱和度。
+
+    两样加起来就是"预览比实物好看"，而照着偏艳的预览判断浓淡，打出来必然是薄的。
+    网页那边早就改成诚实的了，桌面这边一直没跟上 —— 同一个引擎，两个说法。
+
+    现在默认：不拉伸，增益取"让光秃白底正好等于纯白"，其余一律落在纯白以下。
+    想要拉满对比看层次的，显式传 stretch=True。
+    """
+    if brightness_ratio is None:
+        brightness_ratio = 1.0 / float(np.exp(-DENSITY_W * MIN_WHITE_LAYERS))
+    e_r = DENSITY_C * l_c + DENSITY_W * l_w + CROSSTALK_RM * l_m
+    e_g = DENSITY_M * l_m + DENSITY_W * l_w + CROSSTALK_GY * l_y
+    e_b = DENSITY_Y * l_y + DENSITY_W * l_w + CROSSTALK_BC * l_c
 
     sim_rgb = np.stack([np.exp(-e_r), np.exp(-e_g), np.exp(-e_b)], axis=-1)
     if stretch:

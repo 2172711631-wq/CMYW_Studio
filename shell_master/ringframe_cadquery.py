@@ -1141,6 +1141,16 @@ def _out_dir(here: str) -> str:
     return d
 
 
+# 当前跑的是哪个预设。两个预设的零件尺寸差着一大截（frame 前框 174×134，
+# standee 107×157），以前却都写同一个 ringframe.3mf —— 谁后跑谁覆盖，
+# 而文件名上看不出区别。拿错了要到切片器里量尺寸才发现。
+PRESET = "frame"
+
+
+def _stem() -> str:
+    return "ringframe" if PRESET == "frame" else f"ringframe_{PRESET}"
+
+
 def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
     paths: dict[str, str] = {}
     shapes = {name: fn() for name, fn in PARTS.items()}
@@ -1169,7 +1179,7 @@ def export_all(out_dir: str, *, tolerance: float = 0.05) -> dict[str, str]:
         for i, items in enumerate(packed)
     ]
     paths["project_3mf"] = write_bambu_3mf(
-        os.path.join(out_dir, "ringframe.3mf"), plates, tol=tolerance
+        os.path.join(out_dir, f"{_stem()}.3mf"), plates, tol=tolerance
     )
     paths["_plates"] = str(len(packed))
     # 再出一份"四件摊平"的 STEP：装配体适合看，但要改尺寸、加特征的时候
@@ -1299,7 +1309,7 @@ def spec() -> list[tuple[str, str]]:
             f"**触摸区必须 100% 填充** —— "
             f"用 ringframe_touch_modifier 当修改器，这步不能省",
         ),
-        ("摆盘", f"ringframe.3mf —— {_plate_note()}"),
+        ("摆盘", f"{_stem()}.3mf —— {_plate_note()}"),
     ]
 
 
@@ -1320,6 +1330,7 @@ def main() -> None:
         # 所以窄边框只能从 WALL 上要。
         globals()["ART_W"], globals()["ART_H"] = 100.0, 150.0
         globals()["WALL"] = 3.5
+        globals()["PRESET"] = "standee"
 
     if args.art:
         w, h = (float(v) for v in args.art.lower().split("x"))
