@@ -654,7 +654,12 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
                     ])
                     .close()
                     .extrude(snap_len + 2.0 * c)
-                    .translate((0.0, y - snap_len / 2.0 - c, 0.0))
+                    # **XZ 工作平面的法线指向 −Y**，所以 extrude(L) 长出来的是 −L..0。
+                    # 要把它摆在以 y 为中心的位置，得往 +y 挪 L/2，不是往 −y 挪。
+                    # 之前这里写成 −L/2，坑整体偏了一个 L：前面那个跑到零件外面去了，
+                    # 后面那个落在 42.75..52.15 —— 而底盖上的卡扣在 4.45..13.85 和
+                    # 52.15..61.55。这就是"歪到不知道哪里去了"。
+                    .translate((0.0, y + (snap_len + 2.0 * c) / 2.0, 0.0))
                 )
                 base = base.cut(prof)
 
@@ -1313,6 +1318,51 @@ def spec() -> list[tuple[str, str]]:
     ]
 
 
+def check_cover_snaps() -> list[str]:
+    """量出来对不对，不是算出来对不对。
+
+    卡扣对位错过两次，两次我都用参数算了一遍、算出来都是对的：
+    第一次是画框插槽把坑铲掉了 17mm，第二次是 XZ 工作平面的法线指向 −Y、
+    extrude 出来的实体在 −L..0，整排坑偏了一个 L。**两次参数都没说谎，
+    是参数没被摆到它该在的地方。** 所以这条检查直接量成品：
+    在底盖凸起的高度上扫一遍，看每一处凸起是不是真的落在底座的坑里。
+    """
+    if COVER_SNAP <= 1e-4:
+        return []
+    import numpy as np
+    import trimesh
+
+    p = params()
+    bay_x = p["base_w"] / 2.0 - BASE_WALL
+    w = 2.0 * (bay_x + COVER_LIP) - COVER_FIT
+    zc = max(0.5, COVER_T - COVER_SNAP_H / 2.0)
+    ys = np.arange(0.5, BASE_D, 0.2)
+
+    def _mesh(shape):
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix=".stl")
+        os.close(fd)
+        cq.exporters.export(shape, path, tolerance=0.05)
+        m = trimesh.load(path)
+        os.unlink(path)
+        return m
+
+    cov, base = _mesh(build_cover()), _mesh(build_base())
+    proud = np.array([
+        (lambda v: v[:, 0].max() if len(v) else -1e9)(
+            cov.vertices[np.abs(cov.vertices[:, 1] - (y - BASE_D / 2.0)) < 0.2]
+        )
+        for y in ys
+    ]) > w / 2.0 + 0.2
+    pts = np.stack([np.full_like(ys, bay_x + COVER_LIP + 0.25), ys,
+                    np.full_like(ys, zc)], 1)
+    hollow = ~base.contains(pts)
+    bad = [f"{y:.1f}" for y, a, b in zip(ys, proud, hollow, strict=True) if a and not b]
+    if bad:
+        return [f"**底盖卡扣没落进底座的坑里**：y = {', '.join(bad[:6])} 处凸起顶在实料上"]
+    return []
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="两件式灯画框：出 STL/STEP/3MF 与料单")
     ap.add_argument(
@@ -1344,6 +1394,13 @@ def main() -> None:
     paths = export_all(_out_dir(here))
     for name in sorted(paths):
         print(f"已导出 {name}: {os.path.basename(paths[name])}")
+    print()
+    print("== 自检 ==")
+    problems = check_cover_snaps()
+    for msg in problems:
+        print(f"  ✗ {msg}")
+    if not problems:
+        print("  ✔ 底盖卡扣逐处落在底座的坑里（量的是成品，不是参数）")
     print()
     print("== 尺寸 ==")
     for k, v in spec():
