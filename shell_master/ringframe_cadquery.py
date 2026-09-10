@@ -227,56 +227,19 @@ USB_BORE_R = 2.0
 COVER_T = 1.6         # 底盖厚
 COVER_FIT = 0.3
 COVER_LIP = 1.2       # 底盖沉入量，装上后与底面齐平
-# —— 底盖卡扣 ——
-# 原来是一道方棱：从底盖侧面直挺挺凸出 0.4，跨在 z = COVER_T ± 0.6 上。
-# 三处都不成立，所以实物上按不进去、按进去也留不住：
+# —— 底盖：从背面滑进去 ——
+# 卡扣那条路走到头了。压进去的盖子要么按不动、要么留不住，中间那点余地
+# 全被打印偏差吃掉：坑会垂小、凸会摊大，图纸上的 0.15 到机器上已经是负的。
+# 改了三版（加导入斜面、菱形剖面、削薄舌头）都还在同一个夹缝里打转。
 #
-#   · **没有东西会让。** 棱长在一块 1.6 厚的整板边上，对面是 3mm 厚的箱壁 ——
-#     两边都不弯，那 0.4 就只能硬挤，挤不过去。
-#   · **没有导入斜面。** 方棱对方坑，是"撞上去"而不是"滑进去"。
-#   · **打印姿态不成立。** 底盖平躺打，这道棱有一半悬在板面之上（1.6 → 2.2），
-#     底下什么都没有，打出来是塌的、尺寸也不准 —— 就是你说的摆放问题。
-#
-# 改法三条一起：棱做成**上窄下宽的楔形**（平躺打时逐层内收，自支撑，
-# 顺带上面那面就是导入斜面）；棱**只占底盖自己的厚度**，不再探到板面之上；
-# 两侧开豁口，让它坐在一根悬臂舌头上 —— 有东西能让，才谈得上卡扣。
-COVER_SNAP = 0.5      # 凸出多少（有舌头能让，比原来的 0.4 再给一点，扣得更实）
-COVER_SNAP_H = 1.0    # 楔形的高度：底面到顶面，1.0 升 0.5 是 27° 的自支撑斜面
-COVER_SNAP_LEN = 20.0 # 每处的长度
-COVER_SNAP_RELIEF = 1.0  # 舌头两侧的豁口宽；0 = 不开（退回不会弯的整板）
-# **给打印偏差留的余量。**
-#
-# 图纸上对得上，实物上对不上 —— 因为 FDM 的坑总比图纸小、凸总比图纸大：
-# 坑的顶面是悬空的，会往下垂进坑里；凸出来的料会往外摊。两头一凑，
-# 0.15 的间隙实际是负的，所以按不进去。
-#
-# 更要命的是底座**倒着打**（上表面朝下），底盖坑那道留住卡扣的台肩正好朝下 ——
-# 整个零件上最容易垂的位置，偏偏是配合面。
-#
-# 两条一起治：坑四周各放 0.35；卡扣和坑都做成**上下都是斜面的菱形**，
-# 没有一个水平面朝下，垂不下来。留住底盖靠的是舌头的弹力顶住斜面，
-# 不是靠一道方肩勾住 —— 对一块电池盖够用，而且这个能打得出来。
-COVER_SNAP_CLR = 0.35
-# 舌头单独削薄。**板厚才是按不进去的主因** —— 1.6 的板在 20mm 长度上几乎不弯，
-# 开了豁口也一样，因为弯的刚度按厚度三次方走：1.6 → 1.0 就软了 4 倍，
-# 同样的力才推得动那 0.5 的过盈。
-# 只削舌头那一小条，底盖其余部分还是 1.6，跨 111mm 不会软塌塌。
-COVER_TONGUE_T = 1.0
-
-
-def _cover_snap_plan(depth: float) -> dict:
-    """底盖卡扣落在哪、多长 —— 底盖和底座都读这一份，不各算各的。"""
-    slot_half = (depth + GROOVE_FIT) / 2.0
-    a0, a1 = COVER_EDGE, GROOVE_Y - slot_half              # 插槽前面那段净空
-    b0, b1 = GROOVE_Y + slot_half, BASE_D - COVER_EDGE     # 插槽后面那段
-    margin = 2.0                                           # 两头各留一点，别顶到尽头
-    usable = min(a1 - a0, b1 - b0) - 2.0 * margin
-    length = max(6.0, min(COVER_SNAP_LEN, usable))
-    return {
-        "snap_len": length,
-        "snap_y0": (a0 + a1) / 2.0,
-        "snap_y1": (b0 + b1) / 2.0,
-    }
+# 滑入没有这个问题：**约束靠形状，不靠过盈**。两条导轨托住盖子的两边，
+# 盖子从背面推进去，前墙挡住行程终点，背面一个小凸点防止自己退出来。
+# 打印偏差在这里只影响"推起来紧不紧"，不影响装得上装不上。
+COVER_RAIL_T = 0.8    # 导轨厚（也就是盖子离底面沉进去多少）
+COVER_RAIL_W = 2.6    # 导轨往里伸多少 —— 必须落在插槽两侧那条实料上
+COVER_SLIDE_FIT = 0.25  # 盖子比轨间距小多少（总量），推得动又不旷
+COVER_DETENT = 0.35   # 背面那个防退凸点的高度
+COVER_DETENT_LEN = 6.0
 
 
 def params() -> dict[str, float]:
@@ -325,12 +288,6 @@ def params() -> dict[str, float]:
         "art_print_w": socket_w - ART_INSERT_FIT,
         "art_print_h": socket_h - ART_INSERT_FIT,
         "bezel_hold": ((socket_w - ART_INSERT_FIT) - window_w) / 2.0,
-        # 底盖卡扣的 y 位置与长度。**必须避开画框插槽** —— 插槽从上面一直切到
-        # 底盖，落在它范围里的卡扣坑会被整个铲掉。原来按沉槽长度的 0.25/0.75 摆，
-        # 前面那个正好骑在插槽上：坑长 20.7，被切走 17.0，只剩两截碎的，
-        # 一长一短、中心也不在卡扣中间 —— 而底盖上的卡扣是对称的，于是对不上。
-        # 现在把插槽前后两段净空各取中点，长度按短的那段来定。
-        **_cover_snap_plan(z_socket + module_h),
         # 灯条平贴盘底，凸进腔里的只有它自己的厚度；剩下的全是混光距离
         "mix_gap": CAVITY_D - LED_T,
         "led_run": cav_w - 8.0,
@@ -352,12 +309,13 @@ def params() -> dict[str, float]:
         "snap_z": depth - (MODULE_BACK_T + CAVITY_D * SNAP_AT),
         "base_w": frame_w + 2.0 * BASE_MARGIN,
         # 插槽打穿到底盖顶面，所以插深由板厚和底盖厚定，不再是一个独立参数
-        "groove_depth": BASE_T - COVER_T,
+        # 插槽打穿到底盖**上表面**。盖子被导轨垫高了，这里要跟着减
+        "groove_depth": BASE_T - COVER_T - COVER_RAIL_T,
         # 电池仓：插槽后方那一整片。前沿离插槽留 4mm 肉
         "bay_y0": GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + BASE_WALL,
         "bay_y1": BASE_D - BASE_WALL,
         # 仓底就是底盖沉槽的顶，中间不该再留一层 —— 留了就是把仓封死
-        "bay_h": BASE_T - BAY_WALL - COVER_T,
+        "bay_h": BASE_T - BAY_WALL - COVER_T - COVER_RAIL_T,
         "bay_w": (frame_w + 2.0 * BASE_MARGIN) - 2.0 * BASE_WALL,
         "bay_d": (BASE_D - BASE_WALL) - (GROOVE_Y + (depth + GROOVE_FIT) / 2.0 + BASE_WALL),
         "stand_h": BASE_T + (frame_h - (BASE_T - COVER_T)) * math.cos(math.radians(TILT)),
@@ -613,7 +571,7 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
     # 10mm 的一整块平顶，切片器只能往仓里灌支撑。
     # 底盖靠的是四周那圈 COVER_LIP 宽的台肩，不是这一片。
     bay_x = p["base_w"] / 2.0 - BASE_WALL
-    z_bay0 = COVER_T
+    z_bay0 = COVER_T + COVER_RAIL_T          # 仓底 = 盖子的上表面
     z_bay1 = z_bay0 + p["bay_h"]
     base = base.cut(
         _box_xyz(-bay_x, bay_x, p["bay_y0"], p["bay_y1"], z_bay0, z_bay1)
@@ -622,47 +580,41 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
     # 底盖沉槽：铺满整个底面（只留四周外壁），底盖沉进去与底面齐平。
     # 铺满是必须的 —— 插槽要打穿到这儿，槽底才不存在；顺带底盖变成一整块底板，
     # 前后两段被插槽切开之后靠它连成一体，走线也藏在下面。
+    rail_x1 = bay_x + COVER_LIP
+    rail_x0 = rail_x1 - COVER_RAIL_W
+    z_cov0 = COVER_RAIL_T                 # 盖子的下表面
+    z_cov1 = z_cov0 + COVER_T             # 盖子的上表面 = 电池仓的底
+    # 沉槽整体挖穿到背面（y 到 BASE_D+1），盖子才滑得进来
     base = base.cut(
-        _box_xyz(
-            -(bay_x + COVER_LIP),
-            bay_x + COVER_LIP,
-            COVER_EDGE,
-            BASE_D - COVER_EDGE,
-            -1.0,
-            COVER_T + 0.1,
-        )
+        _box_xyz(-rail_x1, rail_x1, COVER_EDGE, BASE_D + 1.0, -1.0, z_cov1 + 0.1)
     )
+    # 再把两条导轨补回去：只在插槽两侧那条实料上，前后通到背面开口
+    for sx in (-1, 1):
+        base = base.union(
+            _box_xyz(
+                min(sx * rail_x0, sx * rail_x1), max(sx * rail_x0, sx * rail_x1),
+                COVER_EDGE, BASE_D, 0.0, COVER_RAIL_T,
+            )
+        )
+    # 背面那个防退凸点：盖子推到底时越过它，就退不回去了。
+    # 做成上表面 45° 的斜坡（进的时候滑上去），背面一侧是直的（挡住退路）。
+    if COVER_DETENT > 1e-4:
+        for sx in (-1, 1):
+            cx = sx * (rail_x1 - COVER_RAIL_W / 2.0)
+            base = base.union(
+                cq.Workplane("YZ")
+                .polyline([
+                    (BASE_D - 1.0, COVER_RAIL_T),
+                    (BASE_D - 1.0, COVER_RAIL_T + COVER_DETENT),
+                    (BASE_D - 1.0 - COVER_DETENT_LEN, COVER_RAIL_T),
+                ])
+                .close()
+                .extrude(COVER_RAIL_W * 0.7)
+                .translate((cx + (COVER_RAIL_W * 0.35 if sx < 0 else -COVER_RAIL_W * 0.35), 0, 0))
+            )
 
     # 底盖卡扣凹坑。坑要比楔形高一点、深一点：楔形靠底面那道肩留住，
     # 坑底就得在肩的下面，扣进去才有"咔"的一下。
-    if COVER_SNAP > 1e-4:
-        # 坑跟着卡扣做成菱形，四周放 COVER_SNAP_CLR。坑里没有一个水平面朝下，
-        # 倒着打也垂不下来 —— 这正是原来那道方坑做不到的事。
-        z_mid = max(0.5, COVER_T - COVER_SNAP_H / 2.0)
-        c = COVER_SNAP_CLR
-        snap_len = p["snap_len"]
-        for sx in (-1, 1):
-            for y in (p["snap_y0"], p["snap_y1"]):
-                x_in = sx * (bay_x + COVER_LIP)
-                x_out = sx * (bay_x + COVER_LIP + COVER_SNAP + c)
-                prof = (
-                    cq.Workplane("XZ")
-                    .polyline([
-                        (x_in, z_mid - COVER_SNAP_H / 2.0 - c),
-                        (x_out, z_mid),
-                        (x_in, z_mid + COVER_SNAP_H / 2.0 + c),
-                    ])
-                    .close()
-                    .extrude(snap_len + 2.0 * c)
-                    # **XZ 工作平面的法线指向 −Y**，所以 extrude(L) 长出来的是 −L..0。
-                    # 要把它摆在以 y 为中心的位置，得往 +y 挪 L/2，不是往 −y 挪。
-                    # 之前这里写成 −L/2，坑整体偏了一个 L：前面那个跑到零件外面去了，
-                    # 后面那个落在 42.75..52.15 —— 而底盖上的卡扣在 4.45..13.85 和
-                    # 52.15..61.55。这就是"歪到不知道哪里去了"。
-                    .translate((0.0, y + (snap_len + 2.0 * c) / 2.0, 0.0))
-                )
-                base = base.cut(prof)
-
     # 走线：从插槽后墙通到电池仓，贴着底盖走
     z0 = COVER_T + 0.1
     base = base.cut(
@@ -755,67 +707,38 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
 
 
 def build_cover() -> cq.Workplane:
-    """电池仓底盖。平躺打，卡扣朝上。"""
+    """电池仓底盖。平躺打，从底座**背面**滑进去。
+
+    它是一块干净的平板：约束全在底座的两条导轨上，盖子自己不带任何弹性特征。
+    卡扣那三版（导入斜面、菱形剖面、削薄舌头）都卡在同一个夹缝里 ——
+    打印时坑会垂小、凸会摊大，图纸上的间隙到机器上已经是负的，
+    于是要么按不动、要么留不住。滑入把配合从"过盈"换成"形状"，
+    偏差只影响推起来紧不紧，不影响装不装得上。
+
+    背面那个凸点在底座上，不在这儿：盖子推到底时越过它就退不回去，
+    要拆的话从背面用指甲把盖子往外顶，凸点只有 0.35 高，顶得过去。
+    """
     p = params()
     bay_x = p["base_w"] / 2.0 - BASE_WALL
-    w = 2.0 * (bay_x + COVER_LIP) - COVER_FIT
-    d = (BASE_D - 2.0 * COVER_EDGE) - COVER_FIT
+    rail_x1 = bay_x + COVER_LIP
+    # 宽度按**轨间距**算：盖子要压在两条导轨上，所以比轨外沿窄，比轨内沿宽
+    w = 2.0 * rail_x1 - COVER_SLIDE_FIT
+    d = (BASE_D - COVER_EDGE) - COVER_FIT
     cover = (
         cq.Workplane("XY")
         .box(w, d, COVER_T, centered=(True, True, False))
-        .edges("|Z")
-        .fillet(3.0)
+        .translate((0.0, 0.0, COVER_RAIL_T))
     )
-    if COVER_SNAP > 1e-4:
-        # 菱形剖面：最宽处在中间，上下各一道斜面。
-        # 上面那道是导入斜面（推进去时先碰到它），下面那道负责留住。
-        # 两道都是斜的 = 没有水平面朝下 = 打印时不会垂，见 COVER_SNAP_CLR。
-        z_mid = max(0.5, COVER_T - COVER_SNAP_H / 2.0)
-        z_top = COVER_T
-        z_bot = max(0.2, z_mid - COVER_SNAP_H / 2.0)
-        snap_len = p["snap_len"]
-        half = snap_len / 2.0
-        # 底盖是居中建的，而 snap_y* 是底座坐标 —— 减去沉槽中心换算过去
-        recess_mid = (COVER_EDGE + (BASE_D - COVER_EDGE)) / 2.0
-        for sx in (-1, 1):
-            for yc in (p["snap_y0"] - recess_mid, p["snap_y1"] - recess_mid):
-                prof = (
-                    cq.Workplane("XZ")
-                    .polyline([
-                        (sx * w / 2.0, z_bot),
-                        (sx * (w / 2.0 + COVER_SNAP), z_mid),
-                        (sx * w / 2.0, z_top),
-                    ])
-                    .close()
-                    .extrude(snap_len)
-                    .translate((0.0, yc + half, 0.0))
-                )
-                cover = cover.union(prof)
-                # 舌头削薄：从板顶挖掉一层，只留 COVER_TONGUE_T。
-                # 削的是朝仓内那一面，外面看不出来。
-                if COVER_TONGUE_T < COVER_T - 1e-4:
-                    cover = cover.cut(
-                        _box_xyz(
-                            min(sx * (w / 2.0 - 6.0), sx * (w / 2.0 + 1.0)),
-                            max(sx * (w / 2.0 - 6.0), sx * (w / 2.0 + 1.0)),
-                            yc - half - COVER_SNAP_RELIEF,
-                            yc + half + COVER_SNAP_RELIEF,
-                            COVER_TONGUE_T, COVER_T + 1.0,
-                        )
-                    )
-                # 豁口：把卡扣那一段从整板上"切"出一根悬臂舌头。
-                # 不开豁口的话，0.5 的过盈要靠整块板去弯 —— 弯不动，就按不进去。
-                if COVER_SNAP_RELIEF > 1e-4:
-                    for sy2 in (-1, 1):
-                        y = yc + sy2 * (half + COVER_SNAP_RELIEF / 2.0)
-                        cover = cover.cut(
-                            _box_xyz(
-                                min(sx * (w / 2.0 - 5.0), sx * (w / 2.0 + 1.0)),
-                                max(sx * (w / 2.0 - 5.0), sx * (w / 2.0 + 1.0)),
-                                y - COVER_SNAP_RELIEF / 2.0, y + COVER_SNAP_RELIEF / 2.0,
-                                -1.0, COVER_T + 1.0,
-                            )
-                        )
+    # 前端两角倒个小角，滑进去时不会顶住沉槽的圆角
+    try:
+        cover = cover.edges("|Z").fillet(2.0)
+    except Exception:  # noqa: BLE001
+        pass
+    # 背面留个指甲槽，好把它顶出来
+    cover = cover.cut(
+        _box_xyz(-6.0, 6.0, d / 2.0 - 4.0, d / 2.0 + 1.0,
+                 COVER_RAIL_T + COVER_T - 0.6, COVER_RAIL_T + COVER_T + 1.0)
+    )
     return cover
 
 
@@ -1247,7 +1170,9 @@ def spec() -> list[tuple[str, str]]:
             + ("" if p["sway"] < 5.0 else "  ← **太晃，把间隙收紧**"),
         ),
         ("底盖", f'{p["base_w"] - 5.6 - COVER_FIT:.1f} × {BASE_D - 2 * COVER_EDGE - COVER_FIT:.1f} '
-                 f"× {COVER_T} mm 整块底板；插槽的底就是它"),
+                 f"× {COVER_T} mm 整块底板；插槽的底就是它。"
+                 f"**从背面滑入**：两条 {COVER_RAIL_W} 宽的导轨托着，"
+                 f"沉进底面 {COVER_RAIL_T}，推到底越过 {COVER_DETENT} 高的凸点就退不回来"),
         (
             "画片",
             f'实印 {p["art_print_w"]:.1f} × {p["art_print_h"]:.1f} mm（比插口小 {ART_INSERT_FIT}，'
@@ -1318,28 +1243,27 @@ def spec() -> list[tuple[str, str]]:
     ]
 
 
-def check_cover_snaps() -> list[str]:
-    """量出来对不对，不是算出来对不对。
+def check_cover_slide() -> list[str]:
+    """量成品，不是量参数。
 
-    卡扣对位错过两次，两次我都用参数算了一遍、算出来都是对的：
-    第一次是画框插槽把坑铲掉了 17mm，第二次是 XZ 工作平面的法线指向 −Y、
-    extrude 出来的实体在 −L..0，整排坑偏了一个 L。**两次参数都没说谎，
-    是参数没被摆到它该在的地方。** 所以这条检查直接量成品：
-    在底盖凸起的高度上扫一遍，看每一处凸起是不是真的落在底座的坑里。
+    这块对位错过两次，两次我都用参数复算、两次都算对了：一次是画框插槽把坑
+    铲掉 17mm，一次是 XZ 工作平面法线朝 −Y、实体建到了反方向。
+    **参数从来没错，是参数没被摆到它该在的地方** —— 所以检查得落在实体上。
+
+    滑轨要满足两件事：盖子的两条长边下面确实压着料（托得住），
+    而盖子扫过的整条通道里没有别的料挡路（滑得进）。
     """
-    if COVER_SNAP <= 1e-4:
-        return []
     import numpy as np
     import trimesh
 
     p = params()
     bay_x = p["base_w"] / 2.0 - BASE_WALL
-    w = 2.0 * (bay_x + COVER_LIP) - COVER_FIT
-    zc = max(0.5, COVER_T - COVER_SNAP_H / 2.0)
-    ys = np.arange(0.5, BASE_D, 0.2)
+    rail_x1 = bay_x + COVER_LIP
+    half = rail_x1 - COVER_SLIDE_FIT / 2.0
+
+    import tempfile
 
     def _mesh(shape):
-        import tempfile
         fd, path = tempfile.mkstemp(suffix=".stl")
         os.close(fd)
         cq.exporters.export(shape, path, tolerance=0.05)
@@ -1347,20 +1271,31 @@ def check_cover_snaps() -> list[str]:
         os.unlink(path)
         return m
 
-    cov, base = _mesh(build_cover()), _mesh(build_base())
-    proud = np.array([
-        (lambda v: v[:, 0].max() if len(v) else -1e9)(
-            cov.vertices[np.abs(cov.vertices[:, 1] - (y - BASE_D / 2.0)) < 0.2]
-        )
-        for y in ys
-    ]) > w / 2.0 + 0.2
-    pts = np.stack([np.full_like(ys, bay_x + COVER_LIP + 0.25), ys,
-                    np.full_like(ys, zc)], 1)
-    hollow = ~base.contains(pts)
-    bad = [f"{y:.1f}" for y, a, b in zip(ys, proud, hollow, strict=True) if a and not b]
-    if bad:
-        return [f"**底盖卡扣没落进底座的坑里**：y = {', '.join(bad[:6])} 处凸起顶在实料上"]
-    return []
+    base = _mesh(build_base())
+    ys = np.arange(COVER_EDGE + 1.0, BASE_D - 0.5, 0.5)
+    out: list[str] = []
+
+    # 1. 轨上有料吗（盖子下表面正下方）
+    for sx in (-1, 1):
+        x = sx * (rail_x1 - COVER_RAIL_W / 2.0)
+        pts = np.stack([np.full_like(ys, x), ys,
+                        np.full_like(ys, COVER_RAIL_T / 2.0)], 1)
+        miss = (~base.contains(pts)).sum()
+        if miss > len(ys) * 0.1:
+            out.append(f"x={x:.1f} 那条导轨有 {miss}/{len(ys)} 处是空的 —— 盖子托不住")
+
+    # 2. 通道里有挡路的吗（盖子本体扫过的空间）
+    zs = [COVER_RAIL_T + 0.3, COVER_RAIL_T + COVER_T - 0.3]
+    for x in (-half + 1.0, 0.0, half - 1.0):
+        for z in zs:
+            pts = np.stack([np.full_like(ys, x), ys, np.full_like(ys, z)], 1)
+            blocked = base.contains(pts)
+            # 背面那个防退凸点是故意挡的，只准挡最后这一小段
+            bad = [f"{y:.0f}" for y, b in zip(ys, blocked, strict=True)
+                   if b and y < BASE_D - 1.0 - COVER_DETENT_LEN - 1.0]
+            if bad:
+                out.append(f"x={x:.0f} z={z:.1f} 的通道被挡住：y = {', '.join(bad[:6])}")
+    return out
 
 
 def main() -> None:
@@ -1396,11 +1331,11 @@ def main() -> None:
         print(f"已导出 {name}: {os.path.basename(paths[name])}")
     print()
     print("== 自检 ==")
-    problems = check_cover_snaps()
+    problems = check_cover_slide()
     for msg in problems:
         print(f"  ✗ {msg}")
     if not problems:
-        print("  ✔ 底盖卡扣逐处落在底座的坑里（量的是成品，不是参数）")
+        print("  ✔ 底盖两条导轨托得住、通道无阻挡（量的是成品，不是参数）")
     print()
     print("== 尺寸 ==")
     for k, v in spec():
@@ -1411,7 +1346,9 @@ def main() -> None:
     print("  2. 画片、扩散片从前框背面放进去，靠在压边上")
     print("  3. 灯板整体压进前框插口，四个卡扣咔一下。背面与前框齐平")
     print("  4. 换画片：抠出灯板 → 换画片 → 压回去")
-    print("  5. 电池与电路板装在底座后半段的仓里，线从插槽后墙那条口子通到灯板；底盖卡上")
+    print("  5. 电池与电路板装在底座后半段的仓里，线从插槽后墙那条口子通到灯板")
+    print("  6. 底盖**从背面平推进去**，滑到头会越过一个小凸点、咔一下到位；"
+          "要拆就从背面的指甲槽把它顶出来")
     print("  6. 触摸模块贴进左侧壁那个座里，感应面朝外贴住 1.5mm 的壁")
 
 
