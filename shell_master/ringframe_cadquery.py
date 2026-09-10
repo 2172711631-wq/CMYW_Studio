@@ -238,8 +238,13 @@ COVER_LIP = 1.2       # 底盖沉入量，装上后与底面齐平
 COVER_RAIL_T = 0.8    # 导轨厚（也就是盖子离底面沉进去多少）
 COVER_RAIL_W = 2.6    # 导轨往里伸多少 —— 必须落在插槽两侧那条实料上
 COVER_SLIDE_FIT = 0.25  # 盖子比轨间距小多少（总量），推得动又不旷
-COVER_DETENT = 0.35   # 背面那个防退凸点的高度
-COVER_DETENT_LEN = 6.0
+# 防退不靠凸点，靠**楔**：导轨的上表面在最后一段往上抬一点点，
+# 盖子推到底时被夹在轨面和仓底之间，靠摩擦停住。
+# 凸点终究还是个卡扣 —— 要越过它就要有东西让，又回到"过盈要公差"的老问题。
+# 楔面不需要任何东西让：偏差大就早一点夹紧、偏差小就晚一点，位置浮动几毫米而已，
+# 装得上这件事从来不受影响。
+COVER_WEDGE = 0.22    # 最前端抬起多少
+COVER_WEDGE_LEN = 28.0  # 抬起的那一段有多长（斜率 1:127，推得动）
 
 
 def params() -> dict[str, float]:
@@ -596,25 +601,25 @@ def build_base(*, print_orientation: bool = False) -> cq.Workplane:
                 COVER_EDGE, BASE_D, 0.0, COVER_RAIL_T,
             )
         )
-    # 背面那个防退凸点：盖子推到底时越过它，就退不回去了。
-    # 做成上表面 45° 的斜坡（进的时候滑上去），背面一侧是直的（挡住退路）。
-    if COVER_DETENT > 1e-4:
+    # 楔：导轨最前面那一段的上表面抬起来，盖子推到底会被夹住。
+    # 抬的是轨面不是加个坎，所以整条路都是平顺的，没有"越过去"这一下。
+    if COVER_WEDGE > 1e-4:
+        y0 = COVER_EDGE
+        y1 = COVER_EDGE + COVER_WEDGE_LEN
         for sx in (-1, 1):
-            cx = sx * (rail_x1 - COVER_RAIL_W / 2.0)
+            a, b = sx * rail_x0, sx * rail_x1
             base = base.union(
                 cq.Workplane("YZ")
                 .polyline([
-                    (BASE_D - 1.0, COVER_RAIL_T),
-                    (BASE_D - 1.0, COVER_RAIL_T + COVER_DETENT),
-                    (BASE_D - 1.0 - COVER_DETENT_LEN, COVER_RAIL_T),
+                    (y0, COVER_RAIL_T),
+                    (y0, COVER_RAIL_T + COVER_WEDGE),
+                    (y1, COVER_RAIL_T),
                 ])
                 .close()
-                .extrude(COVER_RAIL_W * 0.7)
-                .translate((cx + (COVER_RAIL_W * 0.35 if sx < 0 else -COVER_RAIL_W * 0.35), 0, 0))
+                .extrude(abs(b - a))
+                .translate((min(a, b), 0, 0))
             )
 
-    # 底盖卡扣凹坑。坑要比楔形高一点、深一点：楔形靠底面那道肩留住，
-    # 坑底就得在肩的下面，扣进去才有"咔"的一下。
     # 走线：从插槽后墙通到电池仓，贴着底盖走
     z0 = COVER_T + 0.1
     base = base.cut(
@@ -1172,7 +1177,8 @@ def spec() -> list[tuple[str, str]]:
         ("底盖", f'{p["base_w"] - 5.6 - COVER_FIT:.1f} × {BASE_D - 2 * COVER_EDGE - COVER_FIT:.1f} '
                  f"× {COVER_T} mm 整块底板；插槽的底就是它。"
                  f"**从背面滑入**：两条 {COVER_RAIL_W} 宽的导轨托着，"
-                 f"沉进底面 {COVER_RAIL_T}，推到底越过 {COVER_DETENT} 高的凸点就退不回来"),
+                 f"沉进底面 {COVER_RAIL_T}，最前 {COVER_WEDGE_LEN:.0f} 段轨面抬 {COVER_WEDGE}"
+                 f"（楔紧，无卡扣）"),
         (
             "画片",
             f'实印 {p["art_print_w"]:.1f} × {p["art_print_h"]:.1f} mm（比插口小 {ART_INSERT_FIT}，'
@@ -1285,14 +1291,15 @@ def check_cover_slide() -> list[str]:
             out.append(f"x={x:.1f} 那条导轨有 {miss}/{len(ys)} 处是空的 —— 盖子托不住")
 
     # 2. 通道里有挡路的吗（盖子本体扫过的空间）
-    zs = [COVER_RAIL_T + 0.3, COVER_RAIL_T + COVER_T - 0.3]
+    zs = [COVER_RAIL_T + COVER_WEDGE + 0.3, COVER_RAIL_T + COVER_T - 0.3]
     for x in (-half + 1.0, 0.0, half - 1.0):
         for z in zs:
             pts = np.stack([np.full_like(ys, x), ys, np.full_like(ys, z)], 1)
             blocked = base.contains(pts)
             # 背面那个防退凸点是故意挡的，只准挡最后这一小段
+            # 最前面那段是楔面，本来就该顶到盖子，不算阻挡
             bad = [f"{y:.0f}" for y, b in zip(ys, blocked, strict=True)
-                   if b and y < BASE_D - 1.0 - COVER_DETENT_LEN - 1.0]
+                   if b and y > COVER_EDGE + COVER_WEDGE_LEN + 1.0]
             if bad:
                 out.append(f"x={x:.0f} z={z:.1f} 的通道被挡住：y = {', '.join(bad[:6])}")
     return out
@@ -1347,7 +1354,7 @@ def main() -> None:
     print("  3. 灯板整体压进前框插口，四个卡扣咔一下。背面与前框齐平")
     print("  4. 换画片：抠出灯板 → 换画片 → 压回去")
     print("  5. 电池与电路板装在底座后半段的仓里，线从插槽后墙那条口子通到灯板")
-    print("  6. 底盖**从背面平推进去**，滑到头会越过一个小凸点、咔一下到位；"
+    print("  6. 底盖**从背面平推进去**，最后一段会渐渐夹紧、推到顶就停住（没有卡扣）；"
           "要拆就从背面的指甲槽把它顶出来")
     print("  6. 触摸模块贴进左侧壁那个座里，感应面朝外贴住 1.5mm 的壁")
 
